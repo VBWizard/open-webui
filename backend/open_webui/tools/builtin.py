@@ -527,14 +527,19 @@ async def execute_code(
 async def search_memories(
     query: str,
     count: int = 5,
+    after: str = None,
+    before: str = None,
     __request__: Request = None,
     __user__: dict = None,
+    __chat_id__: str = None,
 ) -> str:
     """
-    Search the user's stored memories for relevant information.
+    Search the user's past conversation history for relevant memories.
 
     :param query: The search query to find relevant memories
     :param count: Number of memories to return (default 5)
+    :param after: Only search messages after this date, e.g. "2023-01-01" (optional)
+    :param before: Only search messages before this date, e.g. "2024-01-01" (optional)
     :return: JSON with matching memories and their dates
     """
     if __request__ is None:
@@ -545,7 +550,7 @@ async def search_memories(
 
         results = await query_memory(
             __request__,
-            QueryMemoryForm(content=query, k=count),
+            QueryMemoryForm(content=query, k=count, chat_id=__chat_id__, after=after, before=before),
             user,
         )
 
@@ -561,9 +566,17 @@ async def search_memories(
                         '%Y-%m-%d',
                         time.localtime(results.metadatas[0][doc_idx]['created_at']),
                     )
+                score = results.distances[0][doc_idx] if results.distances else None
+                score_str = f' score={score:.3f}' if score is not None else ''
+                blurb = doc[:200].replace('\n', ' ↵ ')
+                log.info(f'[memchat tool]   {doc_idx + 1}/{len(results.documents[0])}. [{created_at}]{score_str} {blurb}')
                 memories.append({'id': memory_id, 'date': created_at, 'content': doc})
+
+            total_chars = sum(len(m['content']) for m in memories)
+            log.info(f'[memchat tool] search_memories("{query[:60]}") → {len(memories)} results, {total_chars} chars')
             return json.dumps(memories, ensure_ascii=False)
         else:
+            log.info(f'[memchat tool] search_memories("{query[:60]}") → no results')
             return json.dumps([])
     except Exception as e:
         log.exception(f'search_memories error: {e}')
@@ -576,7 +589,7 @@ async def add_memory(
     __user__: dict = None,
 ) -> str:
     """
-    Store a new memory for the user.
+    Store a new memory for the user. IMPORTANT: Call this tool BEFORE writing your response text, not after.
 
     :param content: The memory content to store
     :return: Confirmation that the memory was stored
@@ -586,6 +599,7 @@ async def add_memory(
 
     try:
         user = UserModel(**__user__) if __user__ else None
+        log.info(f'[memchat] add_memory called: user={getattr(user, "id", None)} content={content[:80]!r}')
 
         memory = await _add_memory(
             __request__,
@@ -593,6 +607,11 @@ async def add_memory(
             user,
         )
 
+        if memory is None:
+            log.error('[memchat] add_memory: _add_memory returned None')
+            return json.dumps({'error': 'memory insert returned None'})
+
+        log.info(f'[memchat] add_memory success: id={memory.id}')
         return json.dumps({'status': 'success', 'id': memory.id}, ensure_ascii=False)
     except Exception as e:
         log.exception(f'add_memory error: {e}')
@@ -606,7 +625,7 @@ async def replace_memory_content(
     __user__: dict = None,
 ) -> str:
     """
-    Update the content of an existing memory by its ID.
+    Update the content of an existing memory by its ID. IMPORTANT: Call this tool BEFORE writing your response text, not after.
 
     :param memory_id: The ID of the memory to update
     :param content: The new content for the memory
@@ -640,7 +659,7 @@ async def delete_memory(
     __user__: dict = None,
 ) -> str:
     """
-    Delete a memory by its ID.
+    Delete a memory by its ID. IMPORTANT: Call this tool BEFORE writing your response text, not after.
 
     :param memory_id: The ID of the memory to delete
     :return: Confirmation that the memory was deleted

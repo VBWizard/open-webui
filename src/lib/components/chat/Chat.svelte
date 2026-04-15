@@ -149,6 +149,7 @@
 	let imageGenerationEnabled = false;
 	let webSearchEnabled = false;
 	let codeInterpreterEnabled = false;
+	let memoryEnabled = $settings?.memory ?? false;
 
 	let showCommands = false;
 
@@ -187,6 +188,7 @@
 		selectedFilterIds = [];
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
+		memoryEnabled = $settings?.memory ?? false;
 
 		const storageChatInput = sessionStorage.getItem(
 			`chat-input${chatIdProp ? `-${chatIdProp}` : ''}`
@@ -279,6 +281,7 @@
 		webSearchEnabled = false;
 		imageGenerationEnabled = false;
 		codeInterpreterEnabled = false;
+		memoryEnabled = $settings?.memory ?? false;
 
 		if (selectedModelIds.filter((id) => id).length > 0) {
 			setDefaults();
@@ -741,6 +744,7 @@
 				webSearchEnabled = false;
 				imageGenerationEnabled = false;
 				codeInterpreterEnabled = false;
+				memoryEnabled = $settings?.memory ?? false;
 
 				try {
 					const input = JSON.parse(storageChatInput);
@@ -2053,7 +2057,7 @@
 			}
 		}
 
-		if ($settings?.memory ?? false) {
+		if (memoryEnabled) {
 			features = { ...features, memory: true };
 		}
 
@@ -2852,6 +2856,7 @@
 									bind:selectedFilterIds
 									bind:imageGenerationEnabled
 									bind:codeInterpreterEnabled
+									bind:memoryEnabled
 									{pendingOAuthTools}
 									bind:webSearchEnabled
 									bind:atSelectedModel
@@ -2936,6 +2941,7 @@
 									bind:selectedFilterIds
 									bind:imageGenerationEnabled
 									bind:codeInterpreterEnabled
+									bind:memoryEnabled
 									bind:webSearchEnabled
 									bind:atSelectedModel
 									bind:showCommands

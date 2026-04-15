@@ -57,6 +57,7 @@ from open_webui.routers.pipelines import (
     process_pipeline_outlet_filter,
 )
 from open_webui.routers.memories import query_memory, QueryMemoryForm
+from open_webui.retrieval import memchat_db
 
 from open_webui.utils.webhook import post_webhook
 from open_webui.utils.files import (
@@ -1391,13 +1392,28 @@ async def chat_completion_tools_handler(
 
 
 async def chat_memory_handler(request: Request, form_data: dict, extra_params: dict, user):
+    # --- Static memories (always injected, non-competing) ---
+    static_memories = await memchat_db.fetch_static_memories(user.id)
+    static_section = ''
+    if static_memories:
+        log.info(f'[memchat] {len(static_memories)} static memories')
+        for idx, mem in enumerate(static_memories):
+            blurb = mem[:200].replace('\n', ' ↵ ')
+            log.info(f'[memchat]   static {idx + 1}/{len(static_memories)}: {blurb}')
+        lines = '\n'.join(f'- {m}' for m in static_memories)
+        static_section = f'Saved Memories:\nThese are facts the user has explicitly saved. Always keep them in mind.\n\n{lines}'
+    else:
+        log.info('[memchat] No static memories.')
+
+    # --- Chat history memories (semantic search, k=6) ---
     try:
         results = await query_memory(
             request,
             QueryMemoryForm(
                 **{
                     'content': get_last_user_message(form_data['messages']) or '',
-                    'k': 3,
+                    'k': 6,
+                    'chat_id': extra_params.get('__chat_id__'),
                 }
             ),
             user,
@@ -1406,21 +1422,39 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
         log.debug(e)
         results = None
 
-    user_context = ''
+    history_section = ''
     if results and hasattr(results, 'documents'):
         if results.documents and len(results.documents) > 0:
-            for doc_idx, doc in enumerate(results.documents[0]):
+            docs = results.documents[0]
+            history_context = ''
+            for doc_idx, doc in enumerate(docs):
                 created_at_date = 'Unknown Date'
 
                 if results.metadatas[0][doc_idx].get('created_at'):
                     created_at_timestamp = results.metadatas[0][doc_idx]['created_at']
                     created_at_date = time.strftime('%Y-%m-%d', time.localtime(created_at_timestamp))
 
-                user_context += f'{doc_idx + 1}. [{created_at_date}] {doc}\n'
+                score = results.distances[0][doc_idx] if results.distances else None
+                blurb = doc[:200].replace('\n', ' ↵ ')
+                score_str = f' score={score:.3f}' if score is not None else ''
+                log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{created_at_date}]{score_str} {blurb}')
 
-    form_data['messages'] = add_or_update_system_message(
-        f'User Context:\n{user_context}\n', form_data['messages'], append=True
-    )
+                history_context += f'{doc_idx + 1}. [{created_at_date}] {doc}\n'
+
+            total_chars = len(history_context)
+            msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
+            log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars into system prompt')
+            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions.\n\n{history_context}'
+    else:
+        log.info('[memchat] No chat history memories retrieved.')
+
+    # --- Inject combined prompt ---
+    parts = [p for p in [static_section, history_section] if p]
+    if parts:
+        form_data['messages'] = add_or_update_system_message(
+            '\n\n'.join(parts),
+            form_data['messages'], append=True
+        )
 
     return form_data
 
@@ -2320,6 +2354,8 @@ async def process_chat_payload(request, form_data, user, metadata, model):
 
     features = form_data.pop('features', None) or {}
     extra_params['__features__'] = features
+    metadata['memory_enabled'] = bool(features.get('memory'))
+    log.info(f'[memchat] features received: {features} | function_calling={metadata.get("params", {}).get("function_calling")}')
     if features:
         if 'voice' in features and features['voice']:
             if request.app.state.config.VOICE_MODE_PROMPT_TEMPLATE != None:
@@ -2334,9 +2370,7 @@ async def process_chat_payload(request, form_data, user, metadata, model):
                 )
 
         if 'memory' in features and features['memory']:
-            # Skip forced memory injection when native FC is enabled - model can use memory tools
-            if metadata.get('params', {}).get('function_calling') != 'native':
-                form_data = await chat_memory_handler(request, form_data, extra_params, user)
+            form_data = await chat_memory_handler(request, form_data, extra_params, user)
 
         if 'web_search' in features and features['web_search']:
             # Skip forced RAG web search when native FC is enabled - model can use web_search tool
@@ -2744,6 +2778,13 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     # to prevent template parsing errors with strict chat templates (e.g. Qwen)
     form_data['messages'] = merge_system_messages(form_data.get('messages', []))
 
+    total_chars = sum(
+        len(m.get('content', '') if isinstance(m.get('content'), str) else
+            ''.join(p.get('text', '') for p in m.get('content', []) if isinstance(p, dict)))
+        for m in form_data.get('messages', [])
+    )
+    log.info(f'[memchat] total payload: {len(form_data.get("messages", []))} messages, {total_chars} chars')
+
     return form_data, metadata, events
 
 
@@ -2840,6 +2881,55 @@ async def get_system_oauth_token(request, user):
     return oauth_token
 
 
+async def _store_turn_to_memchat(user, metadata: dict, messages_map: dict) -> None:
+    """Fire-and-forget: embed and store the latest user+assistant turn to memchat."""
+    try:
+        chat_id = metadata.get('chat_id', '')
+        message_id = metadata.get('message_id', '')
+
+        asst_msg = messages_map.get(message_id, {})
+        asst_content = asst_msg.get('content', '')
+        if isinstance(asst_content, list):
+            asst_content = ' '.join(
+                item.get('text', '') for item in asst_content if item.get('type') == 'text'
+            )
+
+        parent_id = asst_msg.get('parentId')  # OWUI ID of the user message
+        user_msg = messages_map.get(parent_id, {}) if parent_id else {}
+        user_content = user_msg.get('content', '')
+        if isinstance(user_content, list):
+            user_content = ' '.join(
+                item.get('text', '') for item in user_content if item.get('type') == 'text'
+            )
+        prev_asst_owui_id = user_msg.get('parentId')  # OWUI ID of the previous assistant message
+
+        chat_title = Chats.get_chat_title_by_id(chat_id) or 'Open WebUI Chat'
+
+        if user_content.strip() and parent_id:
+            await memchat_db.store_chat_message(
+                user_id=user.id,
+                owui_chat_id=chat_id,
+                chat_title=chat_title,
+                role='user',
+                content=user_content,
+                owui_message_id=parent_id,
+                parent_owui_id=prev_asst_owui_id,
+            )
+
+        if asst_content.strip() and message_id:
+            await memchat_db.store_chat_message(
+                user_id=user.id,
+                owui_chat_id=chat_id,
+                chat_title=chat_title,
+                role='assistant',
+                content=asst_content,
+                owui_message_id=message_id,
+                parent_owui_id=parent_id,
+            )
+    except Exception as e:
+        log.debug(f'_store_turn_to_memchat error: {e}')
+
+
 async def background_tasks_handler(ctx):
     request = ctx['request']
     form_data = ctx['form_data']
@@ -2884,6 +2974,12 @@ async def background_tasks_handler(ctx):
                     'role': message.get('role', 'assistant'),  # Safe fallback for missing role
                     'content': content,
                 }
+            )
+        # Store the new turn only when memory is enabled for this request
+        if messages_map and metadata.get('message_id') and metadata.get('memory_enabled'):
+            log.info(f'[memchat] Queuing store for chat {metadata.get("chat_id", "")[:8]}... message {metadata.get("message_id", "")[:8]}...')
+            asyncio.create_task(
+                _store_turn_to_memchat(user, metadata, messages_map)
             )
     else:
         # Local temp chat, get the model and message from the form_data

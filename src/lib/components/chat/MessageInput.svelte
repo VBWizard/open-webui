@@ -78,6 +78,7 @@
 
 	import XMark from '../icons/XMark.svelte';
 	import GlobeAlt from '../icons/GlobeAlt.svelte';
+	import BookOpen from '../icons/BookOpen.svelte';
 	import Photo from '../icons/Photo.svelte';
 	import Wrench from '../icons/Wrench.svelte';
 	import Sparkles from '../icons/Sparkles.svelte';
@@ -130,6 +131,7 @@
 	export let imageGenerationEnabled = false;
 	export let webSearchEnabled = false;
 	export let codeInterpreterEnabled = false;
+	export let memoryEnabled = false;
 
 	export let pendingOAuthTools = [];
 
@@ -519,6 +521,11 @@
 	$: if ($selectedTerminalId && codeInterpreterEnabled) {
 		codeInterpreterEnabled = false;
 	}
+
+	let showMemoryButton = false;
+	$: showMemoryButton =
+		($config?.features?.enable_memories ?? false) &&
+		($_user.role === 'admin' || ($_user?.permissions?.features?.memories ?? true));
 
 	const scrollToBottom = () => {
 		const element = document.getElementById('messages-container');
@@ -1622,7 +1629,7 @@
 										</div>
 									</InputMenu>
 
-									{#if showWebSearchButton || showImageGenerationButton || showCodeInterpreterButton || showToolsButton || (toggleFilters && toggleFilters.length > 0)}
+									{#if showWebSearchButton || showImageGenerationButton || showCodeInterpreterButton || showMemoryButton || showToolsButton || (toggleFilters && toggleFilters.length > 0)}
 										<div
 											class="flex self-center w-[1px] h-4 mx-1 bg-gray-200/50 dark:bg-gray-800/50"
 										/>
@@ -1633,11 +1640,13 @@
 											{showWebSearchButton}
 											{showImageGenerationButton}
 											{showCodeInterpreterButton}
+											{showMemoryButton}
 											bind:selectedToolIds
 											bind:selectedFilterIds
 											bind:webSearchEnabled
 											bind:imageGenerationEnabled
 											bind:codeInterpreterEnabled
+											bind:memoryEnabled
 											closeOnOutsideClick={integrationsMenuCloseOnOutsideClick}
 											onShowValves={(e) => {
 												const { type, id } = e;
@@ -1797,6 +1806,27 @@
 												>
 													<Terminal className="size-3.5" strokeWidth="2" />
 
+													<div class="hidden group-hover:block">
+														<XMark className="size-4" strokeWidth="1.75" />
+													</div>
+												</button>
+											</Tooltip>
+										{/if}
+
+										{#if memoryEnabled}
+											<Tooltip content={$i18n.t('Memory')} placement="top">
+												<button
+													aria-label={memoryEnabled
+														? $i18n.t('Disable Memory')
+														: $i18n.t('Enable Memory')}
+													aria-pressed={memoryEnabled}
+													on:click|preventDefault={() => (memoryEnabled = !memoryEnabled)}
+													type="button"
+													class="group p-[7px] flex gap-1.5 items-center text-sm rounded-full transition-colors duration-300 focus:outline-hidden max-w-full overflow-hidden {memoryEnabled
+														? ' text-purple-500 dark:text-purple-300 bg-purple-50 hover:bg-purple-100 dark:bg-purple-400/10 dark:hover:bg-purple-600/10 border border-purple-200/40 dark:border-purple-500/20'
+														: 'bg-transparent text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 '}"
+												>
+													<BookOpen className="size-4" strokeWidth="1.75" />
 													<div class="hidden group-hover:block">
 														<XMark className="size-4" strokeWidth="1.75" />
 													</div>

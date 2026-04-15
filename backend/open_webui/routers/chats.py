@@ -3,6 +3,8 @@ import logging
 from typing import Optional
 from sqlalchemy.orm import Session
 import asyncio
+
+from open_webui.retrieval import memchat_db
 from fastapi.responses import StreamingResponse
 
 
@@ -500,6 +502,9 @@ async def delete_all_user_chats(
         )
 
     result = Chats.delete_chats_by_user_id(user.id, db=db)
+    if result:
+        log.info(f'[memchat] queuing soft_delete_all_chats: user={user.id[:8]}...')
+        asyncio.create_task(memchat_db.soft_delete_all_chats(user.id))
     return result
 
 
@@ -889,6 +894,9 @@ async def update_chat_by_id(
     if chat:
         updated_chat = {**chat.chat, **form_data.chat}
         chat = Chats.update_chat_by_id(id, updated_chat, db=db)
+        if chat and chat.title and chat.title != 'New Chat':
+            log.info(f'[memchat] queuing sync_chat_title: chat={id[:8]}... title={chat.title!r}')
+            asyncio.create_task(memchat_db.sync_chat_title(user.id, id, chat.title))
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
@@ -1028,7 +1036,9 @@ async def delete_chat_by_id(
         Chats.delete_orphan_tags_for_user(chat.meta.get('tags', []), user.id, threshold=1, db=db)
 
         result = Chats.delete_chat_by_id(id, db=db)
-
+        if result:
+            log.info(f'[memchat] queuing soft_delete_chat for admin delete: chat={id[:8]}... user={chat.user_id[:8]}...')
+            asyncio.create_task(memchat_db.soft_delete_chat(chat.user_id, id))
         return result
     else:
         if not has_permission(user.id, 'chat.delete', request.app.state.config.USER_PERMISSIONS):
@@ -1046,6 +1056,9 @@ async def delete_chat_by_id(
         Chats.delete_orphan_tags_for_user(chat.meta.get('tags', []), user.id, threshold=1, db=db)
 
         result = Chats.delete_chat_by_id_and_user_id(id, user.id, db=db)
+        if result:
+            log.info(f'[memchat] queuing soft_delete_chat: chat={id[:8]}... user={user.id[:8]}...')
+            asyncio.create_task(memchat_db.soft_delete_chat(user.id, id))
         return result
 
 
