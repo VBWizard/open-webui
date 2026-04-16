@@ -524,7 +524,7 @@ async def execute_code(
 # =============================================================================
 
 
-async def search_memories(
+async def search_chat_history(
     query: str,
     count: int = 5,
     after: str = None,
@@ -534,13 +534,16 @@ async def search_memories(
     __chat_id__: str = None,
 ) -> str:
     """
-    Search the user's past conversation history for relevant memories.
+    Semantically search the user's past conversation history.
 
-    :param query: The search query to find relevant memories
-    :param count: Number of memories to return (default 5)
+    Use this when the user references something from a previous conversation and you need
+    to find relevant context by meaning, e.g. "what did we discuss about X?".
+
+    :param query: The search query to find relevant conversation excerpts
+    :param count: Number of conversation groups to return (default 5)
     :param after: Only search messages after this date, e.g. "2023-01-01" (optional)
     :param before: Only search messages before this date, e.g. "2024-01-01" (optional)
-    :return: JSON with matching memories and their dates
+    :return: JSON list of matching conversation excerpts with dates
     """
     if __request__ is None:
         return json.dumps({'error': 'Request context not available'})
@@ -563,7 +566,7 @@ async def search_memories(
                 created_at = 'Unknown'
                 if results.metadatas and results.metadatas[0][doc_idx].get('created_at'):
                     created_at = time.strftime(
-                        '%Y-%m-%d',
+                        '%Y-%m-%d %H:%M:%S',
                         time.localtime(results.metadatas[0][doc_idx]['created_at']),
                     )
                 score = results.distances[0][doc_idx] if results.distances else None
@@ -573,13 +576,82 @@ async def search_memories(
                 memories.append({'id': memory_id, 'date': created_at, 'content': doc})
 
             total_chars = sum(len(m['content']) for m in memories)
-            log.info(f'[memchat tool] search_memories("{query[:60]}") → {len(memories)} results, {total_chars} chars')
+            log.info(f'[memchat tool] search_chat_history("{query[:60]}") → {len(memories)} results, {total_chars} chars')
             return json.dumps(memories, ensure_ascii=False)
         else:
-            log.info(f'[memchat tool] search_memories("{query[:60]}") → no results')
+            log.info(f'[memchat tool] search_chat_history("{query[:60]}") → no results')
             return json.dumps([])
     except Exception as e:
-        log.exception(f'search_memories error: {e}')
+        log.exception(f'search_chat_history error: {e}')
+        return json.dumps({'error': str(e)})
+
+
+async def search_memory(
+    __request__: Request = None,
+    __user__: dict = None,
+) -> str:
+    """
+    Return all saved static memories for the user.
+
+    Static memories are explicit facts saved with add_memory (e.g. user's name, preferences,
+    important facts). Use this to recall what has been saved about the user before responding.
+
+    :return: JSON list of memories with id, content, and created_at datetime
+    """
+    if __request__ is None:
+        return json.dumps({'error': 'Request context not available'})
+
+    try:
+        from open_webui.retrieval import memchat_db
+        user = UserModel(**__user__) if __user__ else None
+        memories = await memchat_db.fetch_static_memories_with_meta(user.id)
+        log.info(f'[memchat tool] search_memory → {len(memories)} static memories')
+        return json.dumps(memories, ensure_ascii=False)
+    except Exception as e:
+        log.exception(f'search_memory error: {e}')
+        return json.dumps({'error': str(e)})
+
+
+async def get_chat_history_around(
+    timestamp: str,
+    steps: int = None,
+    __request__: Request = None,
+    __user__: dict = None,
+) -> str:
+    """
+    Retrieve conversation messages around a specific point in time.
+
+    Use this when the user refers to "what we discussed on [date]" or "earlier today" and
+    you have a specific timestamp to anchor to, but no keyword query.
+
+    :param timestamp: ISO datetime string, e.g. "2026-04-10 14:23:11" or "2026-04-10"
+    :param steps: Number of messages to fetch before and after the anchor (default: server setting)
+    :return: JSON list of messages with role, content, and timestamp
+    """
+    if __request__ is None:
+        return json.dumps({'error': 'Request context not available'})
+
+    try:
+        from open_webui.retrieval import memchat_db
+        user = UserModel(**__user__) if __user__ else None
+        n = steps if steps is not None else memchat_db.MEMCHAT_CONTEXT_STEPS
+        msgs = await memchat_db.get_messages_around_timestamp(user.id, timestamp, steps=n)
+        if not msgs:
+            log.info(f'[memchat tool] get_chat_history_around("{timestamp}") → no results')
+            return json.dumps([])
+        result = [
+            {
+                'role': msg.get('author_role', 'unknown'),
+                'content': (msg.get('content') or '').strip(),
+                'timestamp': msg['timestamp'].strftime('%Y-%m-%d %H:%M:%S') if msg.get('timestamp') else None,
+            }
+            for msg in msgs
+            if (msg.get('content') or '').strip()
+        ]
+        log.info(f'[memchat tool] get_chat_history_around("{timestamp}") → {len(result)} messages')
+        return json.dumps(result, ensure_ascii=False)
+    except Exception as e:
+        log.exception(f'get_chat_history_around error: {e}')
         return json.dumps({'error': str(e)})
 
 

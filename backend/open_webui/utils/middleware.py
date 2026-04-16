@@ -1412,7 +1412,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             QueryMemoryForm(
                 **{
                     'content': get_last_user_message(form_data['messages']) or '',
-                    'k': 6,
+                    'k': memchat_db.MEMCHAT_K,
                     'chat_id': extra_params.get('__chat_id__'),
                 }
             ),
@@ -1432,29 +1432,38 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
 
                 if results.metadatas[0][doc_idx].get('created_at'):
                     created_at_timestamp = results.metadatas[0][doc_idx]['created_at']
-                    created_at_date = time.strftime('%Y-%m-%d', time.localtime(created_at_timestamp))
+                    created_at_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at_timestamp))
 
                 score = results.distances[0][doc_idx] if results.distances else None
                 blurb = doc[:200].replace('\n', ' ↵ ')
                 score_str = f' score={score:.3f}' if score is not None else ''
                 log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{created_at_date}]{score_str} {blurb}')
 
-                history_context += f'{doc_idx + 1}. [{created_at_date}] {doc}\n'
+                history_context += f'--- Memory {doc_idx + 1} [{created_at_date}] ---\n{doc}\n\n'
 
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
-            log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars into system prompt')
+            log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
             history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions.\n\n{history_context}'
     else:
         log.info('[memchat] No chat history memories retrieved.')
 
-    # --- Inject combined prompt ---
+    # --- Inject as prefix on last user message (keeps prior history KV-cached) ---
     parts = [p for p in [static_section, history_section] if p]
     if parts:
-        form_data['messages'] = add_or_update_system_message(
-            '\n\n'.join(parts),
-            form_data['messages'], append=True
-        )
+        memory_content = '\n\n'.join(parts)
+        messages = form_data['messages']
+        # Find the last user message and prepend memory context to it
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get('role') == 'user':
+                original = messages[i].get('content', '')
+                messages[i] = {
+                    **messages[i],
+                    'content': f'<memory_context>\n{memory_content}\n</memory_context>\n\n{original}'
+                }
+                log.info(f'[memchat] prepended {len(memory_content)} chars to user message at index {i}')
+                break
+        form_data['messages'] = messages
 
     return form_data
 
@@ -2784,6 +2793,19 @@ async def process_chat_payload(request, form_data, user, metadata, model):
         for m in form_data.get('messages', [])
     )
     log.info(f'[memchat] total payload: {len(form_data.get("messages", []))} messages, {total_chars} chars')
+
+    # DEBUG: dump full payload to file for inspection
+    try:
+        import json as _json, pathlib as _pathlib
+        _dump_dir = _pathlib.Path.home() / 'memchat_debug'
+        _dump_dir.mkdir(exist_ok=True)
+        _existing = sorted(_dump_dir.glob('payload_*.json'))
+        _idx = len(_existing) + 1
+        _dump_path = _dump_dir / f'payload_{_idx:03d}.json'
+        _dump_path.write_text(_json.dumps(form_data.get('messages', []), indent=2, ensure_ascii=False))
+        log.info(f'[memchat] DEBUG payload written to {_dump_path}')
+    except Exception as _e:
+        log.warning(f'[memchat] DEBUG dump failed: {_e}')
 
     return form_data, metadata, events
 
