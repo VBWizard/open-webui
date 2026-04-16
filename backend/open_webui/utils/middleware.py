@@ -1412,7 +1412,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             QueryMemoryForm(
                 **{
                     'content': get_last_user_message(form_data['messages']) or '',
-                    'k': 6,
+                    'k': memchat_db.MEMCHAT_K,
                     'chat_id': extra_params.get('__chat_id__'),
                 }
             ),
@@ -1432,29 +1432,50 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
 
                 if results.metadatas[0][doc_idx].get('created_at'):
                     created_at_timestamp = results.metadatas[0][doc_idx]['created_at']
-                    created_at_date = time.strftime('%Y-%m-%d', time.localtime(created_at_timestamp))
+                    created_at_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at_timestamp))
 
                 score = results.distances[0][doc_idx] if results.distances else None
                 blurb = doc[:200].replace('\n', ' ↵ ')
                 score_str = f' score={score:.3f}' if score is not None else ''
                 log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{created_at_date}]{score_str} {blurb}')
 
-                history_context += f'{doc_idx + 1}. [{created_at_date}] {doc}\n'
+                history_context += f'--- Memory {doc_idx + 1} [{created_at_date}] ---\n{doc}\n\n'
 
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
-            log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars into system prompt')
+            log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
             history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions.\n\n{history_context}'
     else:
         log.info('[memchat] No chat history memories retrieved.')
 
-    # --- Inject combined prompt ---
+    # --- Inject as prefix on last user message (keeps prior history KV-cached) ---
     parts = [p for p in [static_section, history_section] if p]
     if parts:
-        form_data['messages'] = add_or_update_system_message(
-            '\n\n'.join(parts),
-            form_data['messages'], append=True
-        )
+        memory_content = '\n\n'.join(parts)
+        messages = form_data['messages']
+        # Find the last user message and prepend memory context to it.
+        # For string content, prepend directly (preserves KV cache on prior turns).
+        # For list content (multimodal), fall back to system prompt injection —
+        # prepending a leading text block would cause get_last_user_message() to
+        # return the memory markup instead of the user's actual question, breaking
+        # downstream steps like web search query generation.
+        prefix = f'<memory_context>\n{memory_content}\n</memory_context>\n\n'
+        injected = False
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get('role') == 'user':
+                original = messages[i].get('content') or ''
+                if isinstance(original, list):
+                    break  # fall through to system prompt injection below
+                messages[i] = {**messages[i], 'content': prefix + original}
+                log.info(f'[memchat] prepended {len(memory_content)} chars to user message at index {i}')
+                injected = True
+                break
+        if not injected:
+            form_data['messages'] = add_or_update_system_message(
+                memory_content, form_data['messages'], append=True
+            )
+            log.info(f'[memchat] injected {len(memory_content)} chars into system prompt (multimodal fallback)')
+        form_data['messages'] = messages
 
     return form_data
 

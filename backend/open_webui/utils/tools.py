@@ -59,7 +59,9 @@ from open_webui.tools.builtin import (
     generate_image,
     edit_image,
     execute_code,
-    search_memories,
+    search_chat_history,
+    search_memory,
+    get_chat_history_around,
     add_memory,
     replace_memory_content,
     delete_memory,
@@ -442,7 +444,9 @@ def get_builtin_tools(
     if is_builtin_tool_enabled('memory') and (features.get('memory') or get_model_capability('memory', False)):
         builtin_functions.extend(
             [
-                search_memories,
+                search_chat_history,
+                search_memory,
+                get_chat_history_around,
                 add_memory,
                 replace_memory_content,
                 delete_memory,

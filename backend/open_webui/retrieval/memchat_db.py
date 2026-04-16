@@ -34,6 +34,8 @@ MEMCHAT_EMBED_MODEL = os.environ.get(
     "text-embedding-bge-base-en-v1.5",
 )
 MEMCHAT_MIN_SCORE = float(os.environ.get("MEMCHAT_MIN_SCORE", "0.70"))
+MEMCHAT_K = int(os.environ.get("MEMCHAT_K", "6"))
+MEMCHAT_CONTEXT_STEPS = int(os.environ.get("MEMCHAT_CONTEXT_STEPS", "4"))
 
 _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 
@@ -78,30 +80,30 @@ async def get_embedding(text: str) -> list[float]:
 # Memory search & storage (used by memories router)
 # ---------------------------------------------------------------------------
 
-CONTEXT_STEPS = 4        # messages to walk up/down from each hit (2 rounds × 2 messages)
 MIN_CONTENT_LENGTH = 20  # ignore messages shorter than this
 
 
 def _fetch_one(cur, msg_id: str) -> Optional[dict]:
     cur.execute(
-        "SELECT id::text, parent_id::text, author_role, content FROM memchat.messages WHERE id = %s::uuid",
+        "SELECT id::text, parent_id::text, author_role, content, timestamp FROM memchat.messages WHERE id = %s::uuid",
         (msg_id,),
     )
     row = cur.fetchone()
     return dict(row) if row else None
 
 
-def _fetch_context_sync(conn, hit_id: str) -> list[dict]:
+def _fetch_context_sync(conn, hit_id: str, steps: Optional[int] = None) -> list[dict]:
     """
-    Walk the parent_id chain CONTEXT_STEPS up and down from hit_id.
+    Walk the parent_id chain `steps` up and down from hit_id.
     For descendants, follows the oldest child at each step (avoids branch explosion).
     Returns messages in conversation order (oldest first), including the hit itself.
     """
+    n = steps if steps is not None else MEMCHAT_CONTEXT_STEPS
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
         # Walk UP via parent_id
         ancestors = []
         current_id = hit_id
-        for _ in range(CONTEXT_STEPS):
+        for _ in range(n):
             row = _fetch_one(cur, current_id)
             if not row or not row.get("parent_id"):
                 break
@@ -120,10 +122,10 @@ def _fetch_context_sync(conn, hit_id: str) -> list[dict]:
         # Walk DOWN: at each step take the oldest child (avoids branch explosion)
         descendants = []
         current_id = hit_id
-        for _ in range(CONTEXT_STEPS):
+        for _ in range(n):
             cur.execute(
                 """
-                SELECT id::text, parent_id::text, author_role, content
+                SELECT id::text, parent_id::text, author_role, content, timestamp
                 FROM memchat.messages
                 WHERE parent_id = %s::uuid
                   AND content IS NOT NULL AND content != ''
@@ -148,6 +150,18 @@ def _format_context(msgs: list[dict]) -> str:
         content = (msg.get("content") or "").strip()
         if content:
             parts.append(f"{role}: {content}")
+    return "\n".join(parts)
+
+
+def _format_context_with_timestamps(msgs: list[dict]) -> str:
+    parts = []
+    for msg in msgs:
+        role = (msg.get("author_role") or "unknown").strip()
+        content = (msg.get("content") or "").strip()
+        ts = msg.get("timestamp")
+        ts_str = f'[{ts.strftime("%Y-%m-%d %H:%M:%S")}] ' if ts else ''
+        if content:
+            parts.append(f"{ts_str}{role}: {content}")
     return "\n".join(parts)
 
 
@@ -390,6 +404,77 @@ def _fetch_static_memories_sync(user_id: str) -> list[str]:
 
 async def fetch_static_memories(user_id: str) -> list[str]:
     return await asyncio.to_thread(_fetch_static_memories_sync, user_id)
+
+
+def _fetch_static_memories_with_meta_sync(user_id: str) -> list[dict]:
+    """Return all static (author_role='memory') records for the user with id, content, created_at."""
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT m.id::text, m.content, m.timestamp
+                FROM memchat.messages m
+                JOIN memchat.conversations c ON m.conversation_id = c.id
+                WHERE c.user_id = %s
+                  AND m.author_role = 'memory'
+                  AND m.content IS NOT NULL
+                  AND length(m.content) > 0
+                ORDER BY m.timestamp ASC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+        result = []
+        for row in rows:
+            content = row['content']
+            if len(content) > STATIC_MEMORY_MAX_CHARS:
+                content = content[:STATIC_MEMORY_MAX_CHARS] + '…'
+            ts = row['timestamp']
+            result.append({
+                'id': row['id'],
+                'content': content,
+                'created_at': ts.strftime('%Y-%m-%d %H:%M:%S') if ts else 'Unknown',
+            })
+        return result
+    finally:
+        _put_conn(conn)
+
+
+async def fetch_static_memories_with_meta(user_id: str) -> list[dict]:
+    return await asyncio.to_thread(_fetch_static_memories_with_meta_sync, user_id)
+
+
+def _get_messages_around_timestamp_sync(user_id: str, ts_str: str, steps: int) -> list[dict]:
+    """Find the message closest to ts_str (ISO datetime) and walk the parent_id chain `steps` up/down."""
+    conn = _get_conn()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT m.id::text
+                FROM memchat.messages m
+                JOIN memchat.conversations c ON m.conversation_id = c.id
+                WHERE c.user_id = %s
+                  AND m.timestamp IS NOT NULL
+                  AND m.author_role IN ('user', 'assistant')
+                  AND (c.metadata->>'deleted' IS NULL)
+                ORDER BY ABS(EXTRACT(EPOCH FROM (m.timestamp - %s::timestamp)))
+                LIMIT 1
+                """,
+                (user_id, ts_str),
+            )
+            row = cur.fetchone()
+            if not row:
+                return []
+        return _fetch_context_sync(conn, row['id'], steps=steps)
+    finally:
+        _put_conn(conn)
+
+
+async def get_messages_around_timestamp(user_id: str, ts_str: str, steps: int = MEMCHAT_CONTEXT_STEPS) -> list[dict]:
+    """Return messages around the given ISO timestamp via parent_id walk. No semantic search."""
+    return await asyncio.to_thread(_get_messages_around_timestamp_sync, user_id, ts_str, steps)
 
 
 # ---------------------------------------------------------------------------
