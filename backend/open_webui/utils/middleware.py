@@ -1453,14 +1453,17 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
     if parts:
         memory_content = '\n\n'.join(parts)
         messages = form_data['messages']
-        # Find the last user message and prepend memory context to it
+        # Find the last user message and prepend memory context to it.
+        # Handle both string content (text-only) and list content (multimodal).
+        prefix = f'<memory_context>\n{memory_content}\n</memory_context>\n\n'
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get('role') == 'user':
                 original = messages[i].get('content', '')
-                messages[i] = {
-                    **messages[i],
-                    'content': f'<memory_context>\n{memory_content}\n</memory_context>\n\n{original}'
-                }
+                if isinstance(original, list):
+                    new_content = [{'type': 'text', 'text': prefix}] + original
+                else:
+                    new_content = prefix + original
+                messages[i] = {**messages[i], 'content': new_content}
                 log.info(f'[memchat] prepended {len(memory_content)} chars to user message at index {i}')
                 break
         form_data['messages'] = messages
@@ -2793,19 +2796,6 @@ async def process_chat_payload(request, form_data, user, metadata, model):
         for m in form_data.get('messages', [])
     )
     log.info(f'[memchat] total payload: {len(form_data.get("messages", []))} messages, {total_chars} chars')
-
-    # DEBUG: dump full payload to file for inspection
-    try:
-        import json as _json, pathlib as _pathlib
-        _dump_dir = _pathlib.Path.home() / 'memchat_debug'
-        _dump_dir.mkdir(exist_ok=True)
-        _existing = sorted(_dump_dir.glob('payload_*.json'))
-        _idx = len(_existing) + 1
-        _dump_path = _dump_dir / f'payload_{_idx:03d}.json'
-        _dump_path.write_text(_json.dumps(form_data.get('messages', []), indent=2, ensure_ascii=False))
-        log.info(f'[memchat] DEBUG payload written to {_dump_path}')
-    except Exception as _e:
-        log.warning(f'[memchat] DEBUG dump failed: {_e}')
 
     return form_data, metadata, events
 
