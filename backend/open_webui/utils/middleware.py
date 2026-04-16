@@ -1454,18 +1454,27 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
         memory_content = '\n\n'.join(parts)
         messages = form_data['messages']
         # Find the last user message and prepend memory context to it.
-        # Handle both string content (text-only) and list content (multimodal).
+        # For string content, prepend directly (preserves KV cache on prior turns).
+        # For list content (multimodal), fall back to system prompt injection —
+        # prepending a leading text block would cause get_last_user_message() to
+        # return the memory markup instead of the user's actual question, breaking
+        # downstream steps like web search query generation.
         prefix = f'<memory_context>\n{memory_content}\n</memory_context>\n\n'
+        injected = False
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get('role') == 'user':
                 original = messages[i].get('content', '')
                 if isinstance(original, list):
-                    new_content = [{'type': 'text', 'text': prefix}] + original
-                else:
-                    new_content = prefix + original
-                messages[i] = {**messages[i], 'content': new_content}
+                    break  # fall through to system prompt injection below
+                messages[i] = {**messages[i], 'content': prefix + original}
                 log.info(f'[memchat] prepended {len(memory_content)} chars to user message at index {i}')
+                injected = True
                 break
+        if not injected:
+            form_data['messages'] = add_or_update_system_message(
+                memory_content, form_data['messages'], append=True
+            )
+            log.info(f'[memchat] injected {len(memory_content)} chars into system prompt (multimodal fallback)')
         form_data['messages'] = messages
 
     return form_data

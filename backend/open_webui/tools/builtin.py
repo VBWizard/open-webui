@@ -634,6 +634,10 @@ async def get_chat_history_around(
     try:
         from open_webui.retrieval import memchat_db
         user = UserModel(**__user__) if __user__ else None
+        MAX_STEPS = 20
+        if steps is not None:
+            if steps < 1 or steps > MAX_STEPS:
+                return json.dumps({'error': f'steps must be between 1 and {MAX_STEPS}'})
         n = steps if steps is not None else memchat_db.MEMCHAT_CONTEXT_STEPS
         msgs = await memchat_db.get_messages_around_timestamp(user.id, timestamp, steps=n)
         if not msgs:
