@@ -1463,7 +1463,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
         injected = False
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get('role') == 'user':
-                original = messages[i].get('content', '')
+                original = messages[i].get('content') or ''
                 if isinstance(original, list):
                     break  # fall through to system prompt injection below
                 messages[i] = {**messages[i], 'content': prefix + original}
