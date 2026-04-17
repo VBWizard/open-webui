@@ -1810,6 +1810,62 @@ ENABLE_FOLLOW_UP_GENERATION = PersistentConfig(
     os.environ.get('ENABLE_FOLLOW_UP_GENERATION', 'True').lower() == 'true',
 )
 
+ENABLE_SUGGEST_GENERATION = PersistentConfig(
+    'ENABLE_SUGGEST_GENERATION',
+    'task.suggest.enable',
+    os.environ.get('ENABLE_SUGGEST_GENERATION', 'True').lower() == 'true',
+)
+
+SUGGEST_GENERATION_COUNT = PersistentConfig(
+    'SUGGEST_GENERATION_COUNT',
+    'task.suggest.count',
+    int(os.environ.get('SUGGEST_GENERATION_COUNT', '3')),
+)
+
+SUGGEST_GENERATION_MODE = PersistentConfig(
+    'SUGGEST_GENERATION_MODE',
+    'task.suggest.mode',
+    os.environ.get('SUGGEST_GENERATION_MODE', 'literal'),
+)
+
+SUGGEST_GENERATION_PROMPT_TEMPLATE = PersistentConfig(
+    'SUGGEST_GENERATION_PROMPT_TEMPLATE',
+    'task.suggest.prompt_template',
+    os.environ.get('SUGGEST_GENERATION_PROMPT_TEMPLATE', ''),
+)
+
+DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_LITERAL = """### Task:
+Suggest {{COUNT}} natural messages that the user ({{USER_NAME}}) could send next in this conversation.
+Write each suggestion as if you are the user — in first person, conversational, and authentic to the tone of the chat so far.
+### Guidelines:
+- Match the emotional register and familiarity of the existing conversation.
+- Do not repeat what has already been said.
+- Keep each suggestion concise (1-3 sentences max).
+- Use the conversation's primary language; default to English if unclear.
+- Response must be a JSON object with a "suggestions" key containing an array of strings, no extra text or formatting.
+### Output:
+JSON format: { "suggestions": ["Message 1", "Message 2", "Message 3"] }
+### Chat History:
+<chat_history>
+{{MESSAGES:END:10}}
+</chat_history>"""
+
+DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_INSPIRE = """### Task:
+Suggest {{COUNT}} topics, angles, or ideas that {{USER_NAME}} might want to explore next in this conversation.
+These are not messages to send verbatim — they are prompts for inspiration to help the user decide where to take the conversation.
+### Guidelines:
+- Be creative and think beyond the obvious next step.
+- Draw on the emotional and contextual threads of the conversation.
+- Keep each suggestion brief and evocative (a phrase or short sentence).
+- Use the conversation's primary language; default to English if unclear.
+- Response must be a JSON object with a "suggestions" key containing an array of strings, no extra text or formatting.
+### Output:
+JSON format: { "suggestions": ["Idea 1", "Idea 2", "Idea 3"] }
+### Chat History:
+<chat_history>
+{{MESSAGES:END:10}}
+</chat_history>"""
+
 ENABLE_TAGS_GENERATION = PersistentConfig(
     'ENABLE_TAGS_GENERATION',
     'task.tags.enable',
