@@ -146,8 +146,8 @@ def _fetch_context_sync(conn, hit_id: str, steps: Optional[int] = None) -> list[
 
 def _truncate(content: str, max_chars: int = 0) -> str:
     """Truncate content to max_chars, appending an indicator if cut. 0 = no limit."""
-    limit = max_chars or MEMCHAT_MAX_MSG_CHARS
-    if len(content) <= limit:
+    limit = max_chars if max_chars > 0 else MEMCHAT_MAX_MSG_CHARS
+    if limit <= 0 or len(content) <= limit:
         return content
     return content[:limit] + f"… [+{len(content) - limit} chars]"
 
