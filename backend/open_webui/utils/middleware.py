@@ -1401,7 +1401,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             blurb = mem[:200].replace('\n', ' ↵ ')
             log.info(f'[memchat]   static {idx + 1}/{len(static_memories)}: {blurb}')
         lines = '\n'.join(f'- {m}' for m in static_memories)
-        static_section = f'Saved Memories:\nThese are facts the user has explicitly saved. Always keep them in mind.\n\n{lines}'
+        static_section = f'Your Saved Memories:\nThese are facts that you have chosen to save. Always keep them in mind.\n\n{lines}'
     else:
         log.info('[memchat] No static memories.')
 
@@ -1435,7 +1435,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
                     created_at_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at_timestamp))
 
                 score = results.distances[0][doc_idx] if results.distances else None
-                blurb = doc[:200].replace('\n', ' ↵ ')
+                blurb = doc[:300].replace('\n', ' ↵ ')
                 score_str = f' score={score:.3f}' if score is not None else ''
                 log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{created_at_date}]{score_str} {blurb}')
 
@@ -1444,7 +1444,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
             log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
-            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions.\n\n{history_context}'
+            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions (i.e. maintain consistency).\n\n{history_context}'
     else:
         log.info('[memchat] No chat history memories retrieved.')
 
