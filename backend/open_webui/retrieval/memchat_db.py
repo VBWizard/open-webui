@@ -36,6 +36,7 @@ MEMCHAT_EMBED_MODEL = os.environ.get(
 MEMCHAT_MIN_SCORE = float(os.environ.get("MEMCHAT_MIN_SCORE", "0.70"))
 MEMCHAT_K = int(os.environ.get("MEMCHAT_K", "6"))
 MEMCHAT_CONTEXT_STEPS = int(os.environ.get("MEMCHAT_CONTEXT_STEPS", "4"))
+MEMCHAT_MAX_MSG_CHARS = int(os.environ.get("MEMCHAT_MAX_MSG_CHARS", "2000"))
 
 _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 
@@ -143,11 +144,19 @@ def _fetch_context_sync(conn, hit_id: str, steps: Optional[int] = None) -> list[
     return ancestors + [hit] + descendants
 
 
+def _truncate(content: str, max_chars: int = 0) -> str:
+    """Truncate content to max_chars, appending an indicator if cut. 0 = no limit."""
+    limit = max_chars if max_chars > 0 else MEMCHAT_MAX_MSG_CHARS
+    if limit <= 0 or len(content) <= limit:
+        return content
+    return content[:limit] + f"… [+{len(content) - limit} chars]"
+
+
 def _format_context(msgs: list[dict]) -> str:
     parts = []
     for msg in msgs:
         role = (msg.get("author_role") or "unknown").strip()
-        content = (msg.get("content") or "").strip()
+        content = _truncate((msg.get("content") or "").strip())
         if content:
             parts.append(f"{role}: {content}")
     return "\n".join(parts)
@@ -157,7 +166,7 @@ def _format_context_with_timestamps(msgs: list[dict]) -> str:
     parts = []
     for msg in msgs:
         role = (msg.get("author_role") or "unknown").strip()
-        content = (msg.get("content") or "").strip()
+        content = _truncate((msg.get("content") or "").strip())
         ts = msg.get("timestamp")
         ts_str = f'[{ts.strftime("%Y-%m-%d %H:%M:%S")}] ' if ts else ''
         if content:
