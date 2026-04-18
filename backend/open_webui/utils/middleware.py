@@ -1444,6 +1444,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
             log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
+            # CLR 04/18/2026 12:12 pm: REMOVED:  Use them to recall personal details, maintain continuity, and match the tone and style of past interactions (i.e. maintain consistency)
             history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user.\n\n{history_context}'
     else:
         log.info('[memchat] No chat history memories retrieved.')

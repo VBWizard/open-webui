@@ -1927,7 +1927,7 @@
 											</Tooltip>
 										{/if}
 
-										{#if ($settings?.showSuggestButton ?? true) && history?.currentId && history.messages[history.currentId]?.done == true}
+										{#if ($config?.features?.enable_suggest_generation ?? false) && ($settings?.showSuggestButton ?? true) && history?.currentId && history.messages[history.currentId]?.done == true}
 											<Tooltip content={$i18n.t('Suggest next message')} className="flex items-center">
 												<button
 													id="suggest-button"

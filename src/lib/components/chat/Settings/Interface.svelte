@@ -915,10 +915,13 @@
 				</div>
 			</div>
 
-			<div>
+			<div class="{($config?.features?.enable_suggest_generation ?? false) ? '' : 'opacity-50 pointer-events-none'}">
 				<div class=" py-0.5 flex w-full justify-between">
 					<div id="show-suggest-button-label" class=" self-center text-xs">
 						{$i18n.t('Show Suggest Next Message Button')}
+						{#if !($config?.features?.enable_suggest_generation ?? false)}
+							<span class="text-gray-400 dark:text-gray-500 ml-1">({$i18n.t('disabled by admin')})</span>
+						{/if}
 					</div>
 					<div class="flex items-center gap-2 p-1">
 						<Switch
@@ -931,10 +934,8 @@
 						/>
 					</div>
 				</div>
-			</div>
 
-			{#if showSuggestButton}
-			<div>
+				{#if showSuggestButton}
 				<div class=" py-0.5 flex w-full justify-between">
 					<div class=" self-center text-xs">{$i18n.t('Suggest Mode')}</div>
 					<div class="flex items-center gap-2 p-1">
@@ -961,8 +962,8 @@
 						</div>
 					</div>
 				</div>
+				{/if}
 			</div>
-			{/if}
 
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">
