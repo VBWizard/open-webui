@@ -57,6 +57,9 @@
 	let keepFollowUpPrompts = false;
 	let insertFollowUpPrompt = false;
 
+	let showSuggestButton = true;
+	let suggestMode = 'literal';
+
 	let regenerateMenu = true;
 	let enableMessageQueue = true;
 
@@ -224,6 +227,9 @@
 		insertSuggestionPrompt = $settings?.insertSuggestionPrompt ?? false;
 		keepFollowUpPrompts = $settings?.keepFollowUpPrompts ?? false;
 		insertFollowUpPrompt = $settings?.insertFollowUpPrompt ?? false;
+
+		showSuggestButton = $settings?.showSuggestButton ?? true;
+		suggestMode = $settings?.suggestMode ?? 'literal';
 
 		regenerateMenu = $settings?.regenerateMenu ?? true;
 		enableMessageQueue = $settings?.enableMessageQueue ?? true;
@@ -908,6 +914,55 @@
 					</div>
 				</div>
 			</div>
+
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div id="show-suggest-button-label" class=" self-center text-xs">
+						{$i18n.t('Show Suggest Next Message Button')}
+					</div>
+					<div class="flex items-center gap-2 p-1">
+						<Switch
+							ariaLabelledbyId="show-suggest-button-label"
+							tooltip={true}
+							bind:state={showSuggestButton}
+							on:change={() => {
+								saveSettings({ showSuggestButton });
+							}}
+						/>
+					</div>
+				</div>
+			</div>
+
+			{#if showSuggestButton}
+			<div>
+				<div class=" py-0.5 flex w-full justify-between">
+					<div class=" self-center text-xs">{$i18n.t('Suggest Mode')}</div>
+					<div class="flex items-center gap-2 p-1">
+						<div class="flex gap-1 text-xs">
+							{#each [
+								{ id: 'literal', label: 'Literal', tip: 'Suggests messages you would actually send, matching your tone and style' },
+								{ id: 'inspire', label: 'Inspire', tip: 'Suggests topics or angles to explore — creative jumping-off points, not ready-to-send messages' }
+							] as mode}
+								<Tooltip content={$i18n.t(mode.tip)} placement="top">
+									<button
+										type="button"
+										class="px-2 py-1 rounded-lg transition {suggestMode === mode.id
+											? 'bg-gray-200 dark:bg-gray-700 font-medium'
+											: 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500'}"
+										on:click={() => {
+											suggestMode = mode.id;
+											saveSettings({ suggestMode });
+										}}
+									>
+										{mode.label}
+									</button>
+								</Tooltip>
+							{/each}
+						</div>
+					</div>
+				</div>
+			</div>
+			{/if}
 
 			<div>
 				<div class=" py-0.5 flex w-full justify-between">

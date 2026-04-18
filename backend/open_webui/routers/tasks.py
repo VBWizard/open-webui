@@ -339,7 +339,7 @@ async def generate_suggestions(request: Request, form_data: dict, user=Depends(g
     )
 
     count = int(request.app.state.config.SUGGEST_GENERATION_COUNT)
-    mode = request.app.state.config.SUGGEST_GENERATION_MODE
+    mode = form_data.get('mode') or request.app.state.config.SUGGEST_GENERATION_MODE
 
     if request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE != '':
         template = request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE

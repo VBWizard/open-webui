@@ -777,6 +777,88 @@ export const generateFollowUps = async (
 	}
 };
 
+export const generateSuggestions = async (
+	token: string = '',
+	model: string,
+	messages: string,
+	chat_id?: string,
+	mode?: string
+) => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_BASE_URL}/api/v1/tasks/suggest/completions`, {
+		method: 'POST',
+		headers: {
+			Accept: 'application/json',
+			'Content-Type': 'application/json',
+			Authorization: `Bearer ${token}`
+		},
+		body: JSON.stringify({
+			model: model,
+			messages: messages,
+			...(chat_id && { chat_id: chat_id }),
+			...(mode && { mode: mode })
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			if ('detail' in err) {
+				error = err.detail;
+			}
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	try {
+		const response = res?.choices[0]?.message?.content ?? '';
+		const sanitizedResponse = response
+			.replace(/[\u2018\u2019`]/g, '"')
+			.replace(/,\s*([}\]])/g, '$1');
+		const jsonStartIndex = sanitizedResponse.indexOf('{');
+		const jsonEndIndex = sanitizedResponse.lastIndexOf('}');
+
+		if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
+			const jsonBlock = sanitizedResponse.substring(jsonStartIndex, jsonEndIndex + 1);
+			try {
+				const parsed = JSON.parse(jsonBlock);
+				if (parsed?.suggestions && Array.isArray(parsed.suggestions)) {
+					return parsed.suggestions;
+				}
+			} catch {
+				// JSON.parse failed (e.g. unescaped quotes in strings) — extract line by line
+				const results: string[] = [];
+				let inArray = false;
+				for (const line of response.split('\n')) {
+					const t = line.trim();
+					if (!inArray && t.includes('"suggestions"') && t.includes('[')) {
+						inArray = true;
+						continue;
+					}
+					if (inArray) {
+						if (t === ']' || t === '],') break;
+						if (t.startsWith('"')) {
+							const content = t.replace(/^"/, '').replace(/",?\s*$/, '');
+							if (content) results.push(content);
+						}
+					}
+				}
+				return results;
+			}
+		}
+		return [];
+	} catch (e) {
+		console.warn('[suggest] Failed to parse suggestions response: ', e);
+		return [];
+	}
+};
+
 export const generateTags = async (
 	token: string = '',
 	model: string,

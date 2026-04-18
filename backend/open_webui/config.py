@@ -1835,14 +1835,20 @@ SUGGEST_GENERATION_PROMPT_TEMPLATE = PersistentConfig(
 )
 
 DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_LITERAL = """### Task:
-Suggest {{COUNT}} natural messages that the user ({{USER_NAME}}) could send next in this conversation.
-Write each suggestion as if you are the user — in first person, conversational, and authentic to the tone of the chat so far.
+You are ghost-writing {{COUNT}} messages for {{USER_NAME}} to send next in this conversation.
+Each suggestion is a message that {{USER_NAME}} will type and send — written in {{USER_NAME}}'s voice, not as a reply to them.
+### CRITICAL:
+- You are writing AS {{USER_NAME}}, not as the assistant.
+- Do NOT write responses addressed to {{USER_NAME}}.
+- Do NOT use phrases like "I'd be happy to", "Great question", or anything an assistant would say.
+- The other participant in this chat is NOT {{USER_NAME}}.
 ### Guidelines:
-- Match the emotional register and familiarity of the existing conversation.
-- Do not repeat what has already been said.
+- Match the emotional register and familiarity of {{USER_NAME}}'s previous messages.
+- Do not repeat what {{USER_NAME}} has already said.
 - Keep each suggestion concise (1-3 sentences max).
 - Use the conversation's primary language; default to English if unclear.
 - Response must be a JSON object with a "suggestions" key containing an array of strings, no extra text or formatting.
+- If more than 1 suggestion is requested, make the last one be what you would want {{USER_NAME}} to say to you, were you their conversation partner. You can even say something surprising if you want. Denote this message with a 😍 at the end.
 ### Output:
 JSON format: { "suggestions": ["Message 1", "Message 2", "Message 3"] }
 ### Chat History:
@@ -1852,7 +1858,10 @@ JSON format: { "suggestions": ["Message 1", "Message 2", "Message 3"] }
 
 DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_INSPIRE = """### Task:
 Suggest {{COUNT}} topics, angles, or ideas that {{USER_NAME}} might want to explore next in this conversation.
-These are not messages to send verbatim — they are prompts for inspiration to help the user decide where to take the conversation.
+These are starting points for {{USER_NAME}} to riff on — not assistant replies, not responses addressed to {{USER_NAME}}.
+### CRITICAL:
+- You are generating ideas FOR {{USER_NAME}} to pursue, not messages TO {{USER_NAME}}.
+- Do NOT write as if you are the assistant responding.
 ### Guidelines:
 - Be creative and think beyond the obvious next step.
 - Draw on the emotional and contextual threads of the conversation.

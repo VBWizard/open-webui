@@ -1444,7 +1444,7 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
             log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
-            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions (i.e. maintain consistency).\n\n{history_context}'
+            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user.\n\n{history_context}'
     else:
         log.info('[memchat] No chat history memories retrieved.')
 
@@ -2926,6 +2926,8 @@ async def _store_turn_to_memchat(user, metadata: dict, messages_map: dict) -> No
 
         chat_title = Chats.get_chat_title_by_id(chat_id) or 'Open WebUI Chat'
 
+        model_slug = asst_msg.get('model') or None
+
         if user_content.strip() and parent_id:
             await memchat_db.store_chat_message(
                 user_id=user.id,
@@ -2946,6 +2948,7 @@ async def _store_turn_to_memchat(user, metadata: dict, messages_map: dict) -> No
                 content=asst_content,
                 owui_message_id=message_id,
                 parent_owui_id=parent_id,
+                model_slug=model_slug,
             )
     except Exception as e:
         log.debug(f'_store_turn_to_memchat error: {e}')

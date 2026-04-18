@@ -53,7 +53,7 @@
 		getWeekday
 	} from '$lib/utils';
 	import { uploadFile } from '$lib/apis/files';
-	import { generateAutoCompletion } from '$lib/apis';
+	import { generateAutoCompletion, generateSuggestions } from '$lib/apis';
 	import { deleteFileById } from '$lib/apis/files';
 	import { getChatById } from '$lib/apis/chats';
 	import { getSessionUser } from '$lib/apis/auths';
@@ -136,6 +136,9 @@
 	export let pendingOAuthTools = [];
 
 	let showTerminalMenu = false;
+
+	let nextMessageSuggestions: string[] = [];
+	let loadingSuggestions = false;
 
 	export let messageQueue: { id: string; prompt: string; files: any[] }[] = [];
 	export let onQueueSendNow: (id: string) => void = () => {};
@@ -1567,6 +1570,30 @@
 								</div>
 							</div>
 
+							{#if nextMessageSuggestions.length > 0}
+								<div class="mx-3 mb-1 flex flex-wrap gap-1.5">
+									{#each nextMessageSuggestions as suggestion}
+										<button
+											type="button"
+											class="px-3 py-1 text-sm rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-850 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-black dark:hover:text-white transition"
+											on:click={() => {
+												setText(suggestion);
+												nextMessageSuggestions = [];
+											}}
+										>
+											{suggestion}
+										</button>
+									{/each}
+									<button
+										type="button"
+										class="px-2 py-1 text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+										on:click={() => { nextMessageSuggestions = []; }}
+									>
+										<XMark className="size-3.5" />
+									</button>
+								</div>
+							{/if}
+
 							<div class=" flex justify-between mt-0.5 mb-2.5 mx-0.5 max-w-full" dir="ltr">
 								<div class="ml-1 self-end flex items-center flex-1 max-w-[80%]">
 									<InputMenu
@@ -1896,6 +1923,42 @@
 													}}
 												>
 													<Note className="size-4.5 translate-y-[0.5px]" />
+												</button>
+											</Tooltip>
+										{/if}
+
+										{#if ($settings?.showSuggestButton ?? true) && history?.currentId && history.messages[history.currentId]?.done == true}
+											<Tooltip content={$i18n.t('Suggest next message')} className="flex items-center">
+												<button
+													id="suggest-button"
+													class="text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 transition rounded-full p-1.5 self-center"
+													type="button"
+													disabled={loadingSuggestions}
+													on:click={async () => {
+														loadingSuggestions = true;
+														nextMessageSuggestions = [];
+														try {
+															const messages = createMessagesList(history, history.currentId);
+															const modelId = (atSelectedModel ?? null)?.id ?? selectedModels[0];
+															const result = await generateSuggestions(
+																localStorage.token,
+																modelId,
+																messages,
+																history?.currentId ?? undefined,
+																$settings?.suggestMode ?? 'literal'
+															);
+															nextMessageSuggestions = result ?? [];
+														} catch (e) {
+															console.error(e);
+														}
+														loadingSuggestions = false;
+													}}
+												>
+													{#if loadingSuggestions}
+														<Spinner className="size-4.5" />
+													{:else}
+														<Sparkles className="size-4.5" strokeWidth="1.75" />
+													{/if}
 												</button>
 											</Tooltip>
 										{/if}
