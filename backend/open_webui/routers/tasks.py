@@ -37,6 +37,7 @@ from open_webui.config import (
     DEFAULT_VOICE_MODE_PROMPT_TEMPLATE,
     DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_LITERAL,
     DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_INSPIRE,
+    DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE,
 )
 
 log = logging.getLogger(__name__)
@@ -87,6 +88,9 @@ async def get_task_config(request: Request, user=Depends(get_verified_user)):
         'SUGGEST_GENERATION_COUNT': request.app.state.config.SUGGEST_GENERATION_COUNT,
         'SUGGEST_GENERATION_MODE': request.app.state.config.SUGGEST_GENERATION_MODE,
         'SUGGEST_GENERATION_PROMPT_TEMPLATE': request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE,
+        'ENABLE_QUERY_REWRITING': request.app.state.config.ENABLE_QUERY_REWRITING,
+        'QUERY_REWRITING_MODEL': request.app.state.config.QUERY_REWRITING_MODEL,
+        'QUERY_REWRITING_PROMPT_TEMPLATE': request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE,
     }
 
 
@@ -111,6 +115,9 @@ class TaskConfigForm(BaseModel):
     SUGGEST_GENERATION_COUNT: int
     SUGGEST_GENERATION_MODE: str
     SUGGEST_GENERATION_PROMPT_TEMPLATE: str
+    ENABLE_QUERY_REWRITING: bool
+    QUERY_REWRITING_MODEL: Optional[str]
+    QUERY_REWRITING_PROMPT_TEMPLATE: str
 
 
 @router.post('/config/update')
@@ -145,6 +152,10 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
     request.app.state.config.SUGGEST_GENERATION_MODE = form_data.SUGGEST_GENERATION_MODE
     request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE = form_data.SUGGEST_GENERATION_PROMPT_TEMPLATE
 
+    request.app.state.config.ENABLE_QUERY_REWRITING = form_data.ENABLE_QUERY_REWRITING
+    request.app.state.config.QUERY_REWRITING_MODEL = form_data.QUERY_REWRITING_MODEL
+    request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE = form_data.QUERY_REWRITING_PROMPT_TEMPLATE
+
     return {
         'TASK_MODEL': request.app.state.config.TASK_MODEL,
         'TASK_MODEL_EXTERNAL': request.app.state.config.TASK_MODEL_EXTERNAL,
@@ -166,6 +177,9 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
         'SUGGEST_GENERATION_COUNT': request.app.state.config.SUGGEST_GENERATION_COUNT,
         'SUGGEST_GENERATION_MODE': request.app.state.config.SUGGEST_GENERATION_MODE,
         'SUGGEST_GENERATION_PROMPT_TEMPLATE': request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE,
+        'ENABLE_QUERY_REWRITING': request.app.state.config.ENABLE_QUERY_REWRITING,
+        'QUERY_REWRITING_MODEL': request.app.state.config.QUERY_REWRITING_MODEL,
+        'QUERY_REWRITING_PROMPT_TEMPLATE': request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE,
     }
 
 

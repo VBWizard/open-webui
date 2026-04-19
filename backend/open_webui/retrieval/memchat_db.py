@@ -501,10 +501,14 @@ def _soft_delete_chat_sync(user_id: str, owui_chat_id: str) -> None:
                 SET metadata = metadata || '{"deleted": true}'::jsonb
                 WHERE user_id = %s
                   AND metadata->>'owui_chat_id' = %s
+                RETURNING id, title
                 """,
                 (user_id, owui_chat_id),
             )
-            conv_affected = cur.rowcount
+            conv_rows = cur.fetchall()
+            conv_affected = len(conv_rows)
+            conv_id = str(conv_rows[0][0]) if conv_rows else None
+            conv_title = conv_rows[0][1] if conv_rows else None
             cur.execute(
                 """
                 UPDATE memchat.messages m
@@ -518,7 +522,7 @@ def _soft_delete_chat_sync(user_id: str, owui_chat_id: str) -> None:
             )
             msg_affected = cur.rowcount
         conn.commit()
-        log.info(f'[memchat] soft_delete_chat: user={user_id[:8]}... chat={owui_chat_id[:8]}... conversations={conv_affected} messages={msg_affected}')
+        log.info(f'[memchat] soft_delete_chat: user={user_id[:8]}... chat={owui_chat_id[:8]}... conv_id={conv_id} title={conv_title!r} conversations={conv_affected} messages={msg_affected}')
     finally:
         _put_conn(conn)
 
