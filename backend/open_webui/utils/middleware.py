@@ -1406,7 +1406,7 @@ async def _query_rewrite_direct(request: Request, model_id: str, prompt: str) ->
         raise ValueError('Ollama models not supported for direct query rewriting')
 
     # Resolve custom/preset models to their base model for API routing
-    routing_id = model.get('base_model_id') or model_id
+    routing_id = model.get('base_model_id') or model.get('info', {}).get('base_model_id') or model_id
 
     # Get connection info from OPENAI_MODELS (covers all OpenAI-compatible connections)
     openai_model = request.app.state.OPENAI_MODELS.get(routing_id)
