@@ -1506,32 +1506,58 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
     if results and hasattr(results, 'documents'):
         if results.documents and len(results.documents) > 0:
             docs = results.documents[0]
+            now = time.time()
             history_context = ''
             for doc_idx, doc in enumerate(docs):
                 created_at_date = 'Unknown Date'
+                age_label = ''
 
                 if results.metadatas[0][doc_idx].get('created_at'):
                     created_at_timestamp = results.metadatas[0][doc_idx]['created_at']
-                    created_at_date = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(created_at_timestamp))
+                    created_at_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(created_at_timestamp))
+                    age_seconds = now - created_at_timestamp
+                    age_days = age_seconds / 86400
+                    if age_days < 1:
+                        age_label = 'today'
+                    elif age_days < 7:
+                        age_label = f'{int(age_days)} day{"s" if int(age_days) != 1 else ""} ago'
+                    elif age_days < 30:
+                        weeks = int(age_days / 7)
+                        age_label = f'{weeks} week{"s" if weeks != 1 else ""} ago'
+                    elif age_days < 365:
+                        months = int(age_days / 30)
+                        age_label = f'{months} month{"s" if months != 1 else ""} ago'
+                    else:
+                        years = int(age_days / 365)
+                        age_label = f'{years} year{"s" if years != 1 else ""} ago'
 
+                mem_label = f'{created_at_date} — {age_label}' if age_label else created_at_date
                 score = results.distances[0][doc_idx] if results.distances else None
                 blurb = doc[:300].replace('\n', ' ↵ ')
                 score_str = f' score={score:.3f}' if score is not None else ''
-                log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{created_at_date}]{score_str} {blurb}')
+                log.info(f'[memchat]   {doc_idx + 1}/{len(docs)}. [{mem_label}]{score_str} {blurb}')
 
-                history_context += f'--- Memory {doc_idx + 1} [{created_at_date}] ---\n{doc}\n\n'
+                history_context += f'--- Memory {doc_idx + 1} [{mem_label}] ---\n{doc}\n\n'
 
             total_chars = len(history_context)
             msg_count = sum(1 for l in history_context.splitlines() if l.startswith(('user:', 'assistant:', 'tool:')))
             log.info(f'[memchat] injecting {len(docs)} context groups, {msg_count} messages, {total_chars} chars')
-            history_section = f'Past Conversation Memories:\nThese are retrieved excerpts from previous conversations with this user. Use them to recall personal details, maintain continuity, and match the tone and style of past interactions (i.e. maintain consistency). *But* only if they are pertinent.\n\n{history_context}'
+            history_section = (
+                f'Past Conversation Memories:\n'
+                f'These are retrieved excerpts from previous conversations with this user, each labeled with the date it occurred and how long ago that was. '
+                f'Use the dates to understand recency — treat older memories as historical context, not recent events. '
+                f'Use them to recall personal details, maintain continuity, and match the tone and style of past interactions. '
+                f'Only reference them if pertinent.\n\n'
+                f'{history_context}'
+            )
     else:
         log.info('[memchat] No chat history memories retrieved.')
 
     # --- Inject as prefix on last user message (keeps prior history KV-cached) ---
     parts = [p for p in [static_section, history_section] if p]
     if parts:
-        memory_content = '\n\n'.join(parts)
+        now_label = time.strftime('%A, %Y-%m-%d %H:%M', time.localtime())
+        memory_content = f'Current date and time: {now_label}\n\n' + '\n\n'.join(parts)
         messages = form_data['messages']
         # Find the last user message and prepend memory context to it.
         # For string content, prepend directly (preserves KV cache on prior turns).
