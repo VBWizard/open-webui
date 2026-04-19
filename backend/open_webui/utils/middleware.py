@@ -2912,6 +2912,16 @@ async def process_chat_payload(request, form_data, user, metadata, model):
     )
     log.info(f'[memchat] total payload: {len(form_data.get("messages", []))} messages, {total_chars} chars')
 
+    # TEMPORARY: dump full payload to ~/tmp/payload_debug.log for inspection
+    try:
+        import json as _json
+        _log_path = os.path.expanduser('~/tmp/payload_debug.log')
+        os.makedirs(os.path.dirname(_log_path), exist_ok=True)
+        with open(_log_path, 'w') as _f:
+            _json.dump(form_data.get('messages', []), _f, indent=2, default=str)
+    except Exception:
+        pass
+
     return form_data, metadata, events
 
 
