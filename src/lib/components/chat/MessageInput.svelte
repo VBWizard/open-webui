@@ -1945,7 +1945,7 @@
 																modelId,
 																messages,
 																history?.currentId ?? undefined,
-																$settings?.suggestMode ?? 'literal'
+																$settings?.suggestMode ?? undefined
 															);
 															nextMessageSuggestions = result ?? [];
 														} catch (e) {

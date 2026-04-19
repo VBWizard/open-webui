@@ -313,6 +313,7 @@
 						<div class="flex items-center gap-2">
 							{#each [1, 2, 3] as n}
 								<button
+									type="button"
 									class="px-2 py-0.5 text-xs rounded-lg border {taskConfig.SUGGEST_GENERATION_COUNT === n
 										? 'bg-gray-100 dark:bg-gray-700 font-semibold'
 										: 'border-transparent'}"
@@ -329,6 +330,7 @@
 						<div class="flex items-center gap-2">
 							{#each ['literal', 'inspire'] as m}
 								<button
+									type="button"
 									class="px-2 py-0.5 text-xs rounded-lg border {taskConfig.SUGGEST_GENERATION_MODE === m
 										? 'bg-gray-100 dark:bg-gray-700 font-semibold'
 										: 'border-transparent'}"
