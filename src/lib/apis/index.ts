@@ -819,7 +819,7 @@ export const generateSuggestions = async (
 	try {
 		const response = res?.choices[0]?.message?.content ?? '';
 		const sanitizedResponse = response
-			.replace(/[\u2018\u2019`]/g, '"')
+			.replace(/[`]/g, '"')
 			.replace(/,\s*([}\]])/g, '$1');
 		const jsonStartIndex = sanitizedResponse.indexOf('{');
 		const jsonEndIndex = sanitizedResponse.lastIndexOf('}');
