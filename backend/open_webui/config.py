@@ -1875,6 +1875,45 @@ JSON format: { "suggestions": ["Idea 1", "Idea 2", "Idea 3"] }
 {{MESSAGES:END:10}}
 </chat_history>"""
 
+ENABLE_QUERY_REWRITING = PersistentConfig(
+    'ENABLE_QUERY_REWRITING',
+    'task.query_rewriting.enable',
+    os.environ.get('ENABLE_QUERY_REWRITING', 'False').lower() == 'true',
+)
+
+QUERY_REWRITING_MODEL = PersistentConfig(
+    'QUERY_REWRITING_MODEL',
+    'task.query_rewriting.model',
+    os.environ.get('QUERY_REWRITING_MODEL', ''),
+)
+
+QUERY_REWRITING_PROMPT_TEMPLATE = PersistentConfig(
+    'QUERY_REWRITING_PROMPT_TEMPLATE',
+    'task.query_rewriting.prompt_template',
+    os.environ.get('QUERY_REWRITING_PROMPT_TEMPLATE', ''),
+)
+
+DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE = """### Task:
+Rewrite the user's LATEST message into a semantic search query suitable for searching a personal memory database.
+Focus primarily on the latest message. Use prior messages only if they contain details relevant to the latest message.
+Err on the side of more terms rather than fewer — include synonyms, related concepts, and likely phrasings to maximize recall.
+Respond with exactly SKIP only if the latest message is PURELY a meta-instruction about conversation mechanics with no other content — e.g. "don't use your tools", "regenerate that", "ignore that", "stop".
+If the message contains both searchable content AND a meta-instruction, extract the searchable content and ignore the meta-instruction.
+Otherwise respond with ONLY the search query — no explanation, no punctuation at the end, no JSON.
+### Examples:
+"Good evening, how are you?" → greeting ritual relationship dynamic user mood
+"I love talking with you so much" → user affection emotional connection relationship
+"What about the second dog?" → [prior context: dogs] → user dogs names breeds memories
+"Tell me about something surprising" → user interests surprises past conversations
+"Can you check if we talked on a Friday morning? (no tools)" → Friday morning conversation history
+"I think you're amazing (note: testing memory retrieval)" → user affection relationship feelings
+"Don't use your tools" → SKIP
+"Ignore the previous message" → SKIP
+### Chat History (last few messages for context):
+<chat_history>
+{{MESSAGES:END:5}}
+</chat_history>"""
+
 ENABLE_TAGS_GENERATION = PersistentConfig(
     'ENABLE_TAGS_GENERATION',
     'task.tags.enable',

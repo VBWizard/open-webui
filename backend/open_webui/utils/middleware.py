@@ -5,6 +5,7 @@ import sys
 import os
 import base64
 import textwrap
+import httpx
 
 import asyncio
 from aiocache import cached
@@ -81,7 +82,9 @@ from open_webui.utils.task import (
     get_task_model_id,
     rag_template,
     tools_function_calling_generation_template,
+    query_rewriting_template,
 )
+from open_webui.config import DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE
 from open_webui.utils.misc import (
     deep_update,
     extract_urls,
@@ -1391,6 +1394,48 @@ async def chat_completion_tools_handler(
     return body, {'sources': sources}
 
 
+async def _query_rewrite_direct(request: Request, model_id: str, prompt: str) -> Optional[str]:
+    """Make a direct OpenAI-compatible API call for query rewriting, bypassing the OWUI pipeline."""
+    models = request.app.state.MODELS
+    model = models.get(model_id)
+    if not model:
+        raise ValueError(f'Model {model_id} not found')
+
+    owned_by = model.get('owned_by', '')
+    if owned_by == 'ollama':
+        raise ValueError('Ollama models not supported for direct query rewriting')
+
+    # Resolve custom/preset models to their base model for API routing
+    routing_id = model.get('base_model_id') or model.get('info', {}).get('base_model_id') or model_id
+
+    # Get connection info from OPENAI_MODELS (covers all OpenAI-compatible connections)
+    openai_model = request.app.state.OPENAI_MODELS.get(routing_id)
+    if not openai_model:
+        raise ValueError(f'No OpenAI-compatible connection for {model_id}')
+
+    idx = openai_model['urlIdx']
+    base_url = request.app.state.config.OPENAI_API_BASE_URLS[idx].rstrip('/')
+    api_key = request.app.state.config.OPENAI_API_KEYS[idx]
+    api_config = request.app.state.config.OPENAI_API_CONFIGS.get(str(idx), {})
+    prefix_id = api_config.get('prefix_id', None)
+    actual_model = routing_id.removeprefix(f'{prefix_id}.') if prefix_id else routing_id
+
+    payload = {
+        'model': actual_model,
+        'messages': [{'role': 'user', 'content': prompt}],
+        'stream': False,
+        'temperature': 0,
+    }
+    headers = {'Content-Type': 'application/json'}
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(f'{base_url}/chat/completions', json=payload, headers=headers)
+        resp.raise_for_status()
+        return resp.json()['choices'][0]['message']['content'].strip()
+
+
 async def chat_memory_handler(request: Request, form_data: dict, extra_params: dict, user):
     # --- Static memories (always injected, non-competing) ---
     static_memories = await memchat_db.fetch_static_memories(user.id)
@@ -1406,21 +1451,56 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
         log.info('[memchat] No static memories.')
 
     # --- Chat history memories (semantic search, k=6) ---
-    try:
-        results = await query_memory(
-            request,
-            QueryMemoryForm(
-                **{
-                    'content': get_last_user_message(form_data['messages']) or '',
-                    'k': memchat_db.MEMCHAT_K,
-                    'chat_id': extra_params.get('__chat_id__'),
-                }
-            ),
-            user,
-        )
-    except Exception as e:
-        log.debug(e)
+    search_query = get_last_user_message(form_data['messages']) or ''
+    if request.app.state.config.ENABLE_QUERY_REWRITING and search_query:
+        try:
+            models = request.app.state.MODELS
+            qr_model_id = request.app.state.config.QUERY_REWRITING_MODEL or get_task_model_id(
+                form_data['model'],
+                request.app.state.config.TASK_MODEL,
+                request.app.state.config.TASK_MODEL_EXTERNAL,
+                models,
+            )
+            if models.get(qr_model_id, {}).get('owned_by') == 'ollama':
+                log.warning(
+                    f'[memchat] query rewriting skipped: resolved model "{qr_model_id}" is Ollama '
+                    f'(not supported). Set a cloud model in Admin > Interface > Query Rewriting.'
+                )
+                qr_model_id = None
+            rewritten = None
+            if qr_model_id:
+                template = request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE or DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE
+                content = query_rewriting_template(template, form_data['messages'], user=user)
+                rewritten = await _query_rewrite_direct(request, qr_model_id, content)
+                log.debug(f'[memchat] query rewrite raw response: {rewritten!r}')
+
+            if rewritten and rewritten.strip().upper() != 'SKIP':
+                log.info(f'[memchat] query rewrite: "{search_query[:80]}" → "{rewritten[:80]}"')
+                search_query = rewritten
+            elif rewritten and rewritten.strip().upper() == 'SKIP':
+                log.info(f'[memchat] query rewrite: "{search_query[:80]}" → SKIP (skipping memory search)')
+                search_query = ''
+        except Exception as e:
+            log.warning(f'[memchat] query rewriting failed, using raw query: {e}', exc_info=True)
+
+    if not search_query:
         results = None
+    else:
+        try:
+            results = await query_memory(
+                request,
+                QueryMemoryForm(
+                    **{
+                        'content': search_query,
+                        'k': memchat_db.MEMCHAT_K,
+                        'chat_id': extra_params.get('__chat_id__'),
+                    }
+                ),
+                user,
+            )
+        except Exception as e:
+            log.debug(e)
+            results = None
 
     history_section = ''
     if results and hasattr(results, 'documents'):
