@@ -596,6 +596,34 @@ async def soft_delete_all_chats(user_id: str) -> None:
     await asyncio.to_thread(_soft_delete_all_chats_sync, user_id)
 
 
+def _soft_delete_messages_sync(user_id: str, owui_message_ids: list[str]) -> None:
+    if not owui_message_ids:
+        return
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE memchat.messages m
+                SET metadata = m.metadata || '{"deleted": true}'::jsonb
+                FROM memchat.conversations c
+                WHERE m.conversation_id = c.id
+                  AND c.user_id = %s
+                  AND m.owui_message_id = ANY(%s)
+                """,
+                (user_id, owui_message_ids),
+            )
+            affected = cur.rowcount
+        conn.commit()
+        log.info(f'[memchat] soft_delete_messages: user={user_id[:8]}... count={len(owui_message_ids)} affected={affected}')
+    finally:
+        _put_conn(conn)
+
+
+async def soft_delete_messages(user_id: str, owui_message_ids: list[str]) -> None:
+    await asyncio.to_thread(_soft_delete_messages_sync, user_id, owui_message_ids)
+
+
 # ---------------------------------------------------------------------------
 # Chat message storage (used by middleware outlet)
 # ---------------------------------------------------------------------------
