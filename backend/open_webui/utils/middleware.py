@@ -1458,10 +1458,18 @@ async def chat_memory_handler(request: Request, form_data: dict, extra_params: d
                 request.app.state.config.TASK_MODEL_EXTERNAL,
                 models,
             )
-            template = request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE or DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE
-            content = query_rewriting_template(template, form_data['messages'], user=user)
-            rewritten = await _query_rewrite_direct(request, qr_model_id, content)
-            log.debug(f'[memchat] query rewrite raw response: {rewritten!r}')
+            if models.get(qr_model_id, {}).get('owned_by') == 'ollama':
+                log.warning(
+                    f'[memchat] query rewriting skipped: resolved model "{qr_model_id}" is Ollama '
+                    f'(not supported). Set a cloud model in Admin > Interface > Query Rewriting.'
+                )
+                qr_model_id = None
+            rewritten = None
+            if qr_model_id:
+                template = request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE or DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE
+                content = query_rewriting_template(template, form_data['messages'], user=user)
+                rewritten = await _query_rewrite_direct(request, qr_model_id, content)
+                log.debug(f'[memchat] query rewrite raw response: {rewritten!r}')
 
             if rewritten and rewritten.strip().upper() != 'SKIP':
                 log.info(f'[memchat] query rewrite: "{search_query[:80]}" → "{rewritten[:80]}"')
