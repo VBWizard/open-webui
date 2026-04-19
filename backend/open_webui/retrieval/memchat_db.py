@@ -643,6 +643,7 @@ def _store_chat_message_sync(
     vector: list[float],
     owui_message_id: str,
     parent_owui_id: Optional[str] = None,
+    model_slug: Optional[str] = None,
 ) -> None:
     conn = _get_conn()
     try:
@@ -653,8 +654,8 @@ def _store_chat_message_sync(
             cur.execute(
                 """
                 INSERT INTO memchat.messages
-                    (id, conversation_id, parent_id, content, embedding, metadata, timestamp, author_role, vendor, owui_message_id)
-                VALUES (%s::uuid, %s::uuid, %s, %s, %s::vector, %s, NOW(), %s, 'openwebui', %s)
+                    (id, conversation_id, parent_id, content, embedding, metadata, timestamp, author_role, vendor, owui_message_id, model_slug)
+                VALUES (%s::uuid, %s::uuid, %s, %s, %s::vector, %s, NOW(), %s, 'openwebui', %s, %s)
                 ON CONFLICT (owui_message_id) WHERE owui_message_id IS NOT NULL DO NOTHING
                 """,
                 (
@@ -666,6 +667,7 @@ def _store_chat_message_sync(
                     json.dumps({"role": role, "owui_chat_id": owui_chat_id}),
                     role,
                     owui_message_id,
+                    model_slug,
                 ),
             )
         conn.commit()
@@ -681,6 +683,7 @@ async def store_chat_message(
     content: str,
     owui_message_id: str,
     parent_owui_id: Optional[str] = None,
+    model_slug: Optional[str] = None,
 ) -> None:
     """Embed a chat message and store it in memchat.messages. Silently skips duplicates."""
     if not content or not content.strip():
@@ -689,7 +692,7 @@ async def store_chat_message(
         vector = await get_embedding(content)
         await asyncio.to_thread(
             _store_chat_message_sync,
-            user_id, owui_chat_id, chat_title, role, content, vector, owui_message_id, parent_owui_id,
+            user_id, owui_chat_id, chat_title, role, content, vector, owui_message_id, parent_owui_id, model_slug,
         )
     except Exception as e:
         log.error(f"memchat store_chat_message error: {e}")

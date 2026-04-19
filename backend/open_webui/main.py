@@ -450,6 +450,10 @@ from open_webui.config import (
     ENABLE_TAGS_GENERATION,
     ENABLE_TITLE_GENERATION,
     ENABLE_FOLLOW_UP_GENERATION,
+    ENABLE_SUGGEST_GENERATION,
+    SUGGEST_GENERATION_COUNT,
+    SUGGEST_GENERATION_MODE,
+    SUGGEST_GENERATION_PROMPT_TEMPLATE,
     ENABLE_SEARCH_QUERY_GENERATION,
     ENABLE_RETRIEVAL_QUERY_GENERATION,
     ENABLE_AUTOCOMPLETE_GENERATION,
@@ -1300,6 +1304,10 @@ app.state.config.ENABLE_AUTOCOMPLETE_GENERATION = ENABLE_AUTOCOMPLETE_GENERATION
 app.state.config.ENABLE_TAGS_GENERATION = ENABLE_TAGS_GENERATION
 app.state.config.ENABLE_TITLE_GENERATION = ENABLE_TITLE_GENERATION
 app.state.config.ENABLE_FOLLOW_UP_GENERATION = ENABLE_FOLLOW_UP_GENERATION
+app.state.config.ENABLE_SUGGEST_GENERATION = ENABLE_SUGGEST_GENERATION
+app.state.config.SUGGEST_GENERATION_COUNT = SUGGEST_GENERATION_COUNT
+app.state.config.SUGGEST_GENERATION_MODE = SUGGEST_GENERATION_MODE
+app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE = SUGGEST_GENERATION_PROMPT_TEMPLATE
 
 
 app.state.config.TITLE_GENERATION_PROMPT_TEMPLATE = TITLE_GENERATION_PROMPT_TEMPLATE
@@ -2078,6 +2086,7 @@ async def get_app_config(request: Request):
                     'enable_google_drive_integration': app.state.config.ENABLE_GOOGLE_DRIVE_INTEGRATION,
                     'enable_onedrive_integration': app.state.config.ENABLE_ONEDRIVE_INTEGRATION,
                     'enable_memories': app.state.config.ENABLE_MEMORIES,
+                    'enable_suggest_generation': app.state.config.ENABLE_SUGGEST_GENERATION,
                     **(
                         {
                             'enable_onedrive_personal': ENABLE_ONEDRIVE_PERSONAL,

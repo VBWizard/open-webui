@@ -16,6 +16,7 @@ from open_webui.utils.task import (
     tags_generation_template,
     emoji_generation_template,
     moa_response_generation_template,
+    suggest_generation_template,
 )
 from open_webui.utils.auth import get_admin_user, get_verified_user
 from open_webui.constants import TASKS
@@ -34,6 +35,8 @@ from open_webui.config import (
     DEFAULT_EMOJI_GENERATION_PROMPT_TEMPLATE,
     DEFAULT_MOA_GENERATION_PROMPT_TEMPLATE,
     DEFAULT_VOICE_MODE_PROMPT_TEMPLATE,
+    DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_LITERAL,
+    DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_INSPIRE,
 )
 
 log = logging.getLogger(__name__)
@@ -80,6 +83,10 @@ async def get_task_config(request: Request, user=Depends(get_verified_user)):
         'QUERY_GENERATION_PROMPT_TEMPLATE': request.app.state.config.QUERY_GENERATION_PROMPT_TEMPLATE,
         'TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE': request.app.state.config.TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE,
         'VOICE_MODE_PROMPT_TEMPLATE': request.app.state.config.VOICE_MODE_PROMPT_TEMPLATE,
+        'ENABLE_SUGGEST_GENERATION': request.app.state.config.ENABLE_SUGGEST_GENERATION,
+        'SUGGEST_GENERATION_COUNT': request.app.state.config.SUGGEST_GENERATION_COUNT,
+        'SUGGEST_GENERATION_MODE': request.app.state.config.SUGGEST_GENERATION_MODE,
+        'SUGGEST_GENERATION_PROMPT_TEMPLATE': request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE,
     }
 
 
@@ -100,6 +107,10 @@ class TaskConfigForm(BaseModel):
     QUERY_GENERATION_PROMPT_TEMPLATE: str
     TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE: str
     VOICE_MODE_PROMPT_TEMPLATE: Optional[str]
+    ENABLE_SUGGEST_GENERATION: bool
+    SUGGEST_GENERATION_COUNT: int
+    SUGGEST_GENERATION_MODE: str
+    SUGGEST_GENERATION_PROMPT_TEMPLATE: str
 
 
 @router.post('/config/update')
@@ -129,6 +140,11 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
 
     request.app.state.config.VOICE_MODE_PROMPT_TEMPLATE = form_data.VOICE_MODE_PROMPT_TEMPLATE
 
+    request.app.state.config.ENABLE_SUGGEST_GENERATION = form_data.ENABLE_SUGGEST_GENERATION
+    request.app.state.config.SUGGEST_GENERATION_COUNT = form_data.SUGGEST_GENERATION_COUNT
+    request.app.state.config.SUGGEST_GENERATION_MODE = form_data.SUGGEST_GENERATION_MODE
+    request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE = form_data.SUGGEST_GENERATION_PROMPT_TEMPLATE
+
     return {
         'TASK_MODEL': request.app.state.config.TASK_MODEL,
         'TASK_MODEL_EXTERNAL': request.app.state.config.TASK_MODEL_EXTERNAL,
@@ -146,6 +162,10 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
         'QUERY_GENERATION_PROMPT_TEMPLATE': request.app.state.config.QUERY_GENERATION_PROMPT_TEMPLATE,
         'TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE': request.app.state.config.TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE,
         'VOICE_MODE_PROMPT_TEMPLATE': request.app.state.config.VOICE_MODE_PROMPT_TEMPLATE,
+        'ENABLE_SUGGEST_GENERATION': request.app.state.config.ENABLE_SUGGEST_GENERATION,
+        'SUGGEST_GENERATION_COUNT': request.app.state.config.SUGGEST_GENERATION_COUNT,
+        'SUGGEST_GENERATION_MODE': request.app.state.config.SUGGEST_GENERATION_MODE,
+        'SUGGEST_GENERATION_PROMPT_TEMPLATE': request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE,
     }
 
 
@@ -279,6 +299,69 @@ async def generate_follow_ups(request: Request, form_data: dict, user=Depends(ge
     }
 
     # Process the payload through the pipeline
+    try:
+        payload = await process_pipeline_inlet_filter(request, payload, user, models)
+    except Exception as e:
+        raise e
+
+    try:
+        return await generate_chat_completion(request, form_data=payload, user=user)
+    except Exception as e:
+        log.error('Exception occurred', exc_info=True)
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={'detail': 'An internal error has occurred.'},
+        )
+
+
+@router.post('/suggest/completions')
+async def generate_suggestions(request: Request, form_data: dict, user=Depends(get_verified_user)):
+    if not request.app.state.config.ENABLE_SUGGEST_GENERATION:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={'detail': 'Suggest generation is disabled'},
+        )
+
+    if getattr(request.state, 'direct', False) and hasattr(request.state, 'model'):
+        models = {request.state.model['id']: request.state.model}
+    else:
+        models = request.app.state.MODELS
+
+    model_id = form_data['model']
+    if model_id not in models:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='Model not found')
+
+    task_model_id = get_task_model_id(
+        model_id,
+        request.app.state.config.TASK_MODEL,
+        request.app.state.config.TASK_MODEL_EXTERNAL,
+        models,
+    )
+
+    count = int(request.app.state.config.SUGGEST_GENERATION_COUNT)
+    mode = form_data.get('mode') or request.app.state.config.SUGGEST_GENERATION_MODE
+
+    if request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE != '':
+        template = request.app.state.config.SUGGEST_GENERATION_PROMPT_TEMPLATE
+    elif mode == 'inspire':
+        template = DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_INSPIRE
+    else:
+        template = DEFAULT_SUGGEST_GENERATION_PROMPT_TEMPLATE_LITERAL
+
+    content = suggest_generation_template(template, form_data['messages'], count=count, user=user)
+
+    payload = {
+        'model': task_model_id,
+        'messages': [{'role': 'user', 'content': content}],
+        'stream': False,
+        'metadata': {
+            **(request.state.metadata if hasattr(request.state, 'metadata') else {}),
+            'task': 'suggest_generation',
+            'task_body': form_data,
+            'chat_id': form_data.get('chat_id', None),
+        },
+    }
+
     try:
         payload = await process_pipeline_inlet_filter(request, payload, user, models)
     except Exception as e:

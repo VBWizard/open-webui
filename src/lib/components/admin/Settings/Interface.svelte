@@ -22,6 +22,10 @@
 		TITLE_GENERATION_PROMPT_TEMPLATE: '',
 		ENABLE_FOLLOW_UP_GENERATION: true,
 		FOLLOW_UP_GENERATION_PROMPT_TEMPLATE: '',
+		ENABLE_SUGGEST_GENERATION: true,
+		SUGGEST_GENERATION_COUNT: 3,
+		SUGGEST_GENERATION_MODE: 'literal',
+		SUGGEST_GENERATION_PROMPT_TEMPLATE: '',
 		IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE: '',
 		ENABLE_AUTOCOMPLETE_GENERATION: true,
 		AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH: -1,
@@ -289,6 +293,70 @@
 								bind:value={taskConfig.FOLLOW_UP_GENERATION_PROMPT_TEMPLATE}
 								placeholder={$i18n.t(
 									'Leave empty to use the default prompt, or enter a custom prompt'
+								)}
+							/>
+						</Tooltip>
+					</div>
+				{/if}
+
+				<div class="mb-2.5 flex w-full items-center justify-between">
+					<div class=" self-center text-xs font-medium">
+						{$i18n.t('Suggest Generation')}
+					</div>
+
+					<Switch bind:state={taskConfig.ENABLE_SUGGEST_GENERATION} />
+				</div>
+
+				{#if taskConfig.ENABLE_SUGGEST_GENERATION}
+					<div class="mb-2.5 flex w-full items-center justify-between">
+						<div class="self-center text-xs font-medium">{$i18n.t('Suggestion Count')}</div>
+						<div class="flex items-center gap-2">
+							{#each [1, 2, 3] as n}
+								<button
+									type="button"
+									class="px-2 py-0.5 text-xs rounded-lg border {taskConfig.SUGGEST_GENERATION_COUNT === n
+										? 'bg-gray-100 dark:bg-gray-700 font-semibold'
+										: 'border-transparent'}"
+									on:click={() => (taskConfig.SUGGEST_GENERATION_COUNT = n)}
+								>
+									{n}
+								</button>
+							{/each}
+						</div>
+					</div>
+
+					<div class="mb-2.5 flex w-full items-center justify-between">
+						<div class="self-center text-xs font-medium">{$i18n.t('Suggestion Mode')}</div>
+						<div class="flex items-center gap-2">
+							{#each ['literal', 'inspire'] as m}
+								<button
+									type="button"
+									class="px-2 py-0.5 text-xs rounded-lg border {taskConfig.SUGGEST_GENERATION_MODE === m
+										? 'bg-gray-100 dark:bg-gray-700 font-semibold'
+										: 'border-transparent'}"
+									on:click={() => {
+										taskConfig.SUGGEST_GENERATION_MODE = m;
+										if (taskConfig.SUGGEST_GENERATION_PROMPT_TEMPLATE === '') {
+											taskConfig.SUGGEST_GENERATION_PROMPT_TEMPLATE = '';
+										}
+									}}
+								>
+									{m}
+								</button>
+							{/each}
+						</div>
+					</div>
+
+					<div class="mb-2.5">
+						<div class="mb-1 text-xs font-medium">{$i18n.t('Suggest Generation Prompt')}</div>
+						<Tooltip
+							content={$i18n.t('Leave empty to use the default prompt for the selected mode, or enter a custom prompt')}
+							placement="top-start"
+						>
+							<Textarea
+								bind:value={taskConfig.SUGGEST_GENERATION_PROMPT_TEMPLATE}
+								placeholder={$i18n.t(
+									'Leave empty to use the default prompt for the selected mode, or enter a custom prompt'
 								)}
 							/>
 						</Tooltip>
