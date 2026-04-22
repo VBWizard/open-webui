@@ -91,6 +91,12 @@ async def get_task_config(request: Request, user=Depends(get_verified_user)):
         'ENABLE_QUERY_REWRITING': request.app.state.config.ENABLE_QUERY_REWRITING,
         'QUERY_REWRITING_MODEL': request.app.state.config.QUERY_REWRITING_MODEL,
         'QUERY_REWRITING_PROMPT_TEMPLATE': request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE,
+        'MEMCHAT_EMBED_CONNECTION_IDX': request.app.state.config.MEMCHAT_EMBED_CONNECTION_IDX,
+        'MEMCHAT_EMBED_MODEL': request.app.state.config.MEMCHAT_EMBED_MODEL,
+        'OPENAI_CONNECTIONS': [
+            {'idx': i, 'url': url}
+            for i, url in enumerate(request.app.state.config.OPENAI_API_BASE_URLS)
+        ],
     }
 
 
@@ -118,6 +124,8 @@ class TaskConfigForm(BaseModel):
     ENABLE_QUERY_REWRITING: bool
     QUERY_REWRITING_MODEL: Optional[str]
     QUERY_REWRITING_PROMPT_TEMPLATE: str
+    MEMCHAT_EMBED_CONNECTION_IDX: int
+    MEMCHAT_EMBED_MODEL: str
 
 
 @router.post('/config/update')
@@ -155,6 +163,8 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
     request.app.state.config.ENABLE_QUERY_REWRITING = form_data.ENABLE_QUERY_REWRITING
     request.app.state.config.QUERY_REWRITING_MODEL = form_data.QUERY_REWRITING_MODEL
     request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE = form_data.QUERY_REWRITING_PROMPT_TEMPLATE
+    request.app.state.config.MEMCHAT_EMBED_CONNECTION_IDX = form_data.MEMCHAT_EMBED_CONNECTION_IDX
+    request.app.state.config.MEMCHAT_EMBED_MODEL = form_data.MEMCHAT_EMBED_MODEL
 
     return {
         'TASK_MODEL': request.app.state.config.TASK_MODEL,
@@ -180,6 +190,12 @@ async def update_task_config(request: Request, form_data: TaskConfigForm, user=D
         'ENABLE_QUERY_REWRITING': request.app.state.config.ENABLE_QUERY_REWRITING,
         'QUERY_REWRITING_MODEL': request.app.state.config.QUERY_REWRITING_MODEL,
         'QUERY_REWRITING_PROMPT_TEMPLATE': request.app.state.config.QUERY_REWRITING_PROMPT_TEMPLATE,
+        'MEMCHAT_EMBED_CONNECTION_IDX': request.app.state.config.MEMCHAT_EMBED_CONNECTION_IDX,
+        'MEMCHAT_EMBED_MODEL': request.app.state.config.MEMCHAT_EMBED_MODEL,
+        'OPENAI_CONNECTIONS': [
+            {'idx': i, 'url': url}
+            for i, url in enumerate(request.app.state.config.OPENAI_API_BASE_URLS)
+        ],
     }
 
 

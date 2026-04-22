@@ -29,6 +29,9 @@
 		ENABLE_QUERY_REWRITING: false,
 		QUERY_REWRITING_MODEL: '',
 		QUERY_REWRITING_PROMPT_TEMPLATE: '',
+		MEMCHAT_EMBED_CONNECTION_IDX: 0,
+		MEMCHAT_EMBED_MODEL: 'text-embedding-bge-base-en-v1.5',
+		OPENAI_CONNECTIONS: [],
 		IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE: '',
 		ENABLE_AUTOCOMPLETE_GENERATION: true,
 		AUTOCOMPLETE_GENERATION_INPUT_MAX_LENGTH: -1,
@@ -452,6 +455,77 @@
 						</Tooltip>
 					</div>
 				{/if}
+
+				<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
+
+				<div class="mb-1 text-xs font-medium flex items-center gap-1">
+					{$i18n.t('Memory Embedding')}
+					<Tooltip
+						content={$i18n.t('OpenAI-compatible embedding service used for memory search and storage.')}
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+							stroke-width="1.5"
+							stroke="currentColor"
+							class="size-3.5"
+						>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"
+							/>
+						</svg>
+					</Tooltip>
+				</div>
+
+				<div class="mb-2.5">
+					<div class="text-xs mb-1">{$i18n.t('Embedding Connection')}</div>
+					<select
+						class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+						bind:value={taskConfig.MEMCHAT_EMBED_CONNECTION_IDX}
+					>
+						{#each taskConfig.OPENAI_CONNECTIONS as conn}
+							<option value={conn.idx}>{conn.url}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="mb-2.5">
+					<div class="text-xs mb-1 flex items-center gap-1">
+						{$i18n.t('Embedding Model')}
+						<Tooltip
+							content={$i18n.t(
+								'⚠️ Changing the embedding model is incompatible with existing memory data. All stored memories were embedded with the current model — switching will break semantic search until memories are re-embedded.'
+							)}
+						>
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								fill="none"
+								viewBox="0 0 24 24"
+								stroke-width="1.5"
+								stroke="currentColor"
+								class="size-3.5 text-yellow-500"
+							>
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+								/>
+							</svg>
+						</Tooltip>
+					</div>
+					<input
+						class="w-full rounded-lg py-2 px-4 text-sm bg-gray-50 dark:text-gray-300 dark:bg-gray-850 outline-hidden"
+						type="text"
+						bind:value={taskConfig.MEMCHAT_EMBED_MODEL}
+						placeholder="text-embedding-bge-base-en-v1.5"
+					/>
+					<div class="mt-1 text-xs text-yellow-600 dark:text-yellow-400">
+						{$i18n.t('⚠️ Changing this model is incompatible with existing memory data.')}
+					</div>
+				</div>
 
 				<hr class=" border-gray-100/30 dark:border-gray-850/30 my-2" />
 

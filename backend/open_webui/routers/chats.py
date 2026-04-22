@@ -892,11 +892,17 @@ async def update_chat_by_id(
 ):
     chat = Chats.get_chat_by_id_and_user_id(id, user.id, db=db)
     if chat:
+        old_message_ids = set(chat.chat.get('history', {}).get('messages', {}).keys())
         updated_chat = {**chat.chat, **form_data.chat}
         chat = Chats.update_chat_by_id(id, updated_chat, db=db)
         if chat and chat.title and chat.title != 'New Chat':
             log.info(f'[memchat] queuing sync_chat_title: chat={id[:8]}... title={chat.title!r}')
             asyncio.create_task(memchat_db.sync_chat_title(user.id, id, chat.title))
+        new_message_ids = set(form_data.chat.get('history', {}).get('messages', {}).keys())
+        deleted_ids = list(old_message_ids - new_message_ids)
+        if deleted_ids:
+            log.info(f'[memchat] queuing soft_delete_messages: chat={id[:8]}... count={len(deleted_ids)}')
+            asyncio.create_task(memchat_db.soft_delete_messages(user.id, deleted_ids))
         return ChatResponse(**chat.model_dump())
     else:
         raise HTTPException(
