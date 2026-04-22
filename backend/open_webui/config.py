@@ -1893,6 +1893,18 @@ QUERY_REWRITING_PROMPT_TEMPLATE = PersistentConfig(
     os.environ.get('QUERY_REWRITING_PROMPT_TEMPLATE', ''),
 )
 
+MEMCHAT_EMBED_CONNECTION_IDX = PersistentConfig(
+    'MEMCHAT_EMBED_CONNECTION_IDX',
+    'memchat.embed.connection_idx',
+    int(os.environ.get('MEMCHAT_EMBED_CONNECTION_IDX', '0')),
+)
+
+MEMCHAT_EMBED_MODEL = PersistentConfig(
+    'MEMCHAT_EMBED_MODEL',
+    'memchat.embed.model',
+    os.environ.get('MEMCHAT_EMBED_MODEL', 'text-embedding-bge-base-en-v1.5'),
+)
+
 DEFAULT_QUERY_REWRITING_PROMPT_TEMPLATE = """### Task:
 Rewrite the user's LATEST message into a semantic search query suitable for searching a personal memory database.
 Focus primarily on the latest message. Use prior messages only if they contain details relevant to the latest message.

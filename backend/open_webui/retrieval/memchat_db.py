@@ -18,20 +18,13 @@ import psycopg2.pool
 import psycopg2.extras
 
 from open_webui.retrieval.vector.main import SearchResult
+from open_webui.config import MEMCHAT_EMBED_CONNECTION_IDX, MEMCHAT_EMBED_MODEL, OPENAI_API_BASE_URLS
 
 log = logging.getLogger(__name__)
 
 MEMCHAT_DB_URL = os.environ.get(
     "MEMCHAT_DB_URL",
     "postgresql://postgres:Hi10081113@172.27.160.1:5432/memchat_db",
-)
-MEMCHAT_EMBED_URL = os.environ.get(
-    "MEMCHAT_EMBED_URL",
-    "http://172.27.160.1:1234/v1",
-)
-MEMCHAT_EMBED_MODEL = os.environ.get(
-    "MEMCHAT_EMBED_MODEL",
-    "text-embedding-bge-base-en-v1.5",
 )
 MEMCHAT_MIN_SCORE = float(os.environ.get("MEMCHAT_MIN_SCORE", "0.70"))
 MEMCHAT_K = int(os.environ.get("MEMCHAT_K", "6"))
@@ -66,15 +59,35 @@ def _vec_literal(v: list[float]) -> str:
 
 
 async def get_embedding(text: str) -> list[float]:
-    """Call LM Studio's OpenAI-compatible embeddings endpoint."""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"{MEMCHAT_EMBED_URL}/embeddings",
-            json={"input": text, "model": MEMCHAT_EMBED_MODEL},
-            headers={"Authorization": "Bearer lm-studio"},
+    """Call the configured OpenAI-compatible embeddings endpoint."""
+    idx = int(MEMCHAT_EMBED_CONNECTION_IDX.value)
+    urls = OPENAI_API_BASE_URLS.value
+    if idx < 0 or idx >= len(urls):
+        raise RuntimeError(
+            f"Invalid embedding connection index {idx}. "
+            f"Select a valid connection in Admin > Interface > Memory Embedding."
         )
-        resp.raise_for_status()
-        return resp.json()["data"][0]["embedding"]
+    url = f"{urls[idx].rstrip('/')}/embeddings"
+    model = str(MEMCHAT_EMBED_MODEL)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                url,
+                json={"input": text, "model": model},
+                headers={"Authorization": "Bearer lm-studio"},
+            )
+            resp.raise_for_status()
+            return resp.json()["data"][0]["embedding"]
+    except httpx.ConnectTimeout:
+        raise RuntimeError(
+            f"Embedding service unreachable at {url}. "
+            f"Is the embedding server running? (Admin > Interface > Memory Embedding)"
+        )
+    except httpx.ConnectError:
+        raise RuntimeError(
+            f"Cannot connect to embedding service at {url}. "
+            f"Check the URL in Admin > Interface > Memory Embedding."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -721,7 +734,9 @@ async def store_chat_message(
     if not content or not content.strip():
         return
     try:
+        log.info(f"Getting embedding of user message to store to the messages table")
         vector = await get_embedding(content)
+        log.info(f"Storing new record to the messages table")
         await asyncio.to_thread(
             _store_chat_message_sync,
             user_id, owui_chat_id, chat_title, role, content, vector, owui_message_id, parent_owui_id, model_slug,
