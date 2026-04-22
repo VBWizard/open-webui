@@ -37,7 +37,7 @@ _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(1, 10, MEMCHAT_DB_URL)
+        _pool = psycopg2.pool.ThreadedConnectionPool(1, 10, MEMCHAT_DB_URL, connect_timeout=5)
     return _pool
 
 

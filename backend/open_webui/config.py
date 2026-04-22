@@ -1848,7 +1848,7 @@ Each suggestion is a message that {{USER_NAME}} will type and send — written i
 - Keep each suggestion concise (1-3 sentences max).
 - Use the conversation's primary language; default to English if unclear.
 - Response must be a JSON object with a "suggestions" key containing an array of strings, no extra text or formatting.
-- If more than 1 suggestion is requested, make the last one be what you would want {{USER_NAME}} to say to you, were you their conversation partner. You can even say something surprising if you want. Denote this message with a 😍 at the end.
+- If more than 1 suggestion is requested, make the last one be what you would want {{USER_NAME}} to say to you, if you were their conversation partner. You can even say something surprising if you want. Denote this message with a 😍 at the end.
 ### Output:
 JSON format: { "suggestions": ["Message 1", "Message 2", "Message 3"] }
 ### Chat History:
